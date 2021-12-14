@@ -36,7 +36,7 @@ let allSlices card =
 let isWinner card =
     let found = card |> allSlices |> Seq.tryFind (fun slice -> slice |> Array.forall ((=) true))
     match found with
-    | Some(card) -> true
+    | Some(_) -> true
     | None -> false
 
 let findWinner numbers cards =
@@ -47,9 +47,9 @@ let findWinner numbers cards =
             let newCards = callNumber nextNumber cards
             let winner = newCards |> Seq.tryFind (fun card -> isWinner card)
             match winner with
-            | Some(card) -> (card, nextNumber, remainingNumbers)
+            | Some(card) -> Some(card, nextNumber, remainingNumbers)
             | None -> callNext remainingNumbers newCards
-        | [] -> failwith "Ran out of numbers!"
+        | [] -> None
     callNext (Seq.toList numbers) cards
 
 let input = System.IO.File.ReadLines("input.txt")
@@ -59,10 +59,6 @@ let cards = readCards (input |> Seq.skip 1) 0
 //printfn "%A" numbers
 //cards |> Seq.iter (fun card -> printfn "%A" card)
 
-let (winner, finalNumber, _) = findWinner numbers cards
-printfn "Winning board is:\n%A" winner
-
-// Find sum of unmarked cards
 let finalScore winner finalNumber =
     let values = winner.Values |> Seq.cast<int>
     let marked = winner.Marked |> Seq.cast<bool>
@@ -70,19 +66,46 @@ let finalScore winner finalNumber =
     let sum = combined |> Seq.sumBy (fun (n, b) -> if (not b) then n; else 0)
     sum * finalNumber
 
-printfn "%d" (finalScore winner finalNumber)
+match findWinner numbers cards with
+| None -> printfn "Couldn't find a winner"
+| Some(winner, finalNumber, _) -> 
+    printfn "Winning board is:\n%A" winner
+    // Print sum of unmarked cards
+    printfn "%d" (finalScore winner finalNumber)
 
 // --- Part Two ---
 
+(*This one didn't work out!*)
 let findLastWinner numbers cards =
-    let rec callNext numbers cards =
-        let (winner, finalNumber, remainingNumbers) = findWinner numbers cards
-        let remainingCards = cards |> Seq.filter (fun card -> card.ID <> winner.ID)
-        if remainingCards |> Seq.isEmpty then (winner, finalNumber)
-        else callNext remainingNumbers remainingCards
-    callNext (Seq.toList numbers) cards
+    let rec callNext numbers cards (winners : (Card * int) list) =
+        match findWinner numbers cards with
+        | Some(winner, finalNumber, remainingNumbers) -> 
+            let remainingCards = cards |> Seq.filter (fun card -> card.ID <> winner.ID)
+            let newWinners = (winner, finalNumber) :: winners
+            callNext remainingNumbers remainingCards newWinners
+        //| None -> winners |> List.head
+        | None -> winners |> List.head
+    callNext (Seq.toList numbers) cards List.empty
 
-let (lastWinner, finalNumber') = findLastWinner numbers cards
+let findLastWinner' numbers cards =
+    let rec callNext numbers cards winners =
+        match numbers with
+        | nextNumber :: remainingNumbers ->
+            printfn $"Calling {nextNumber}..."
+            let newCards = callNumber nextNumber cards |> Seq.toList
+            let localWinners = newCards |> List.where (fun card -> isWinner card)
+            if not (Seq.isEmpty localWinners) then
+                localWinners |> Seq.iter (fun winner -> printfn $"Winner was {winner.ID}!")
+                let localWinnerIDs = localWinners |> Seq.map (fun winner -> winner.ID)
+                let remainingCards = newCards |> Seq.where (fun card -> not (localWinnerIDs |> Seq.contains card.ID))
+                let newWinners = List.append winners (localWinners |> List.map (fun winner -> (winner, nextNumber)))
+                callNext remainingNumbers remainingCards newWinners
+            else
+                callNext remainingNumbers newCards winners
+        | [] -> winners |> Seq.last
+    callNext (Seq.toList numbers) cards List.empty
+
+let (lastWinner, finalNumber) = findLastWinner' numbers cards
 printfn "Last winning board is:\n%A" lastWinner
-
-printfn "%d" (finalScore lastWinner finalNumber')
+// Print sum of unmarked cards
+printfn "%d" (finalScore lastWinner finalNumber)
