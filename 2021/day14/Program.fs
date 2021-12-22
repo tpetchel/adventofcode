@@ -71,111 +71,63 @@ printfn "--- Part Two ---"
 // let score'' = computeScore result''
 // printfn "%i" score''
 
-let mapTemplate (template : seq<char>) =
-    //let elements = template |> Seq.pairwise |> Seq.map (fun (e1, e2) -> ((e1, e2), 1UL)) |> Map.ofSeq
-    let elements = template |> Seq.pairwise |> Seq.fold (fun state pair ->
+let createPairs (template : seq<char>) =
+    template |> Seq.pairwise |> Seq.fold (fun state pair ->
         state |> Map.change pair (fun x ->
             match x with
             | Some n -> Some (n + 1UL)
             | None -> Some (1UL))) Map.empty
+
+let createPairCounts (template : seq<char>) =
     let counts = Array.create 26 0UL
     template |> Seq.iter (fun ch -> 
         let idx = (int ch) - (int 'A')
         counts[idx] <- counts[idx] + 1UL)
-    (elements, counts)
+    counts
 
-let applyRule' (elements : Map<(char * char), uint64>) (counts : uint64 array) (e1, e2, e3) =
-    let key = (e1, e2)
-    let r = elements |> Map.tryFindKey(fun k v -> k = key && v > 0UL)
-    match r with
-    | Some(key) ->
-        let nnn = elements[key]
-        let idx = (int e3) - (int 'A')
-        counts[idx] <- counts[idx] + nnn
-        let elements' =
-                    elements |> Map.change key (fun x ->
-                        match x with
-                        | Some n -> Some (0UL)//(n - 1UL)
-                        | None -> failwith "Unexpected")
-                    |> Map.change (e1, e3) (fun x ->
-                        match x with
-                        | Some n -> Some (n + nnn)
-                        | None -> Some (nnn))
-                    |> Map.change (e3, e2) (fun x ->
-                        match x with
-                        | Some n -> Some (n + nnn)
-                        | None -> Some (nnn))
-        elements'
-    | None -> elements
-
-let applyRules' elements (counts : uint64 array) rules =
+let applyRules' pairs (counts : uint64 array) rules =
+    // First find all matching rules
     let matches = rules |> Seq.where(fun (e1, e2, _) ->
         let key = (e1, e2)
-        elements |> Map.tryFindKey(fun k v -> k = key && v > 0UL) <> None)
+        pairs |> Map.tryFindKey(fun k v -> k = key && v > 0UL) <> None)
 
-    matches |> Seq.fold(fun (mp : Map<(char * char), uint64>) (e1, e2, e3) -> 
+    // Apply each rule
+    matches |> Seq.fold(fun (map : Map<(char * char), uint64>) (e1, e2, e3) -> 
         let key = (e1, e2)
-        let nnn = elements[key]
-        let idx = (int e3) - (int 'A')
-        counts[idx] <- counts[idx] + nnn
-        mp 
-        |> Map.change key (fun x ->
-            match x with
-            | Some n -> Some (n - nnn)//0UL)//(n - 1UL)
-            | None -> failwith "Unexpected")
-        |> Map.change (e1, e3) (fun x ->
-            match x with
-            | Some n -> Some (n + nnn)
-            | None -> Some (nnn))
-        |> Map.change (e3, e2) (fun x ->
-            match x with
-            | Some n -> Some (n + nnn)
-            | None -> Some (nnn))) elements
+        let pairCount = pairs[key]
 
-    //rules |> Seq.fold(fun state' rule -> applyRule' state' rule) state
-    // map
-    // let m = rules |> Seq.map(fun rule -> applyRule' elements counts rule)
-    // // reduce
-    // m |> Seq.reduce(fun m1 m2 ->
-    //     let s1 = m1 |> Map.toSeq
-    //     let s2 = m2 |> Map.toSeq
-    //     (Seq.append s1 s2) |> Seq.fold(fun mp (pair, count) -> 
-    //         mp |> Map.change pair (fun x ->
-    //             match x with
-    //             | Some n -> Some (n + count)
-    //             | None -> Some (count))) Map.empty)
+        let index = (int e3) - (int 'A')
+        counts[index] <- counts[index] + pairCount
 
-// let computeScore' (elements : Map<(char * char), uint64>) =
-//     let counts = Array.create 26 0UL
-//     elements
-//         |> Map.toArray 
-//         |> Array.iter(fun ((ch1, ch2), n) ->
-//             let idx1 = (int ch1) - (int 'A')
-//             let idx2 = (int ch2) - (int 'A')
-//             counts[idx1] <- counts[idx1] + uint64 n
-//             counts[idx2] <- counts[idx2] + uint64 n)
-//     // get counts of most common element and least common element, then subtract them
-//     let max = counts |> Array.max
-//     let min = counts |> Array.where(fun n -> n > 0UL) |> Array.min
-//     max - min
+        map |> Map.change key (fun x ->
+                match x with
+                | Some n -> Some (n - pairCount)
+                | None -> failwith "Unexpected")
+            |> Map.change (e1, e3) (fun x ->
+                match x with
+                | Some n -> Some (n + pairCount)
+                | None -> Some (pairCount))
+            |> Map.change (e3, e2) (fun x ->
+                match x with
+                | Some n -> Some (n + pairCount)
+                | None -> Some (pairCount))) pairs
 
-// let elements = mapTemplate template
-// let elements' = seq { 1 .. 10 } |> Seq.fold(fun e _ -> applyRules' e rules) elements
-// let score'' = computeScore' elements'
-// printfn "%i" score'' // 1588
-
-let computeScore'' (counts : uint64 array) =
+let computeScore' (counts : uint64 array) =
     // get counts of most common element and least common element, then subtract them
     let max = counts |> Array.max
     let min = counts |> Array.where(fun n -> n > 0UL) |> Array.min
     max - min
 
-let (elements, counts) = mapTemplate template
-let final = seq { 1 .. 40 } |> Seq.fold(fun elements' _ -> applyRules' elements' counts rules) elements
-let score'' = computeScore'' counts
-printfn "%i" score'' // 2188189693529
+// Validate sample data
+let pairs = createPairs template
+let counts = createPairCounts template
+let _ = seq { 1 .. 40 } |> Seq.fold(fun pairs' _ -> 
+    applyRules' pairs' counts rules) pairs
+printfn "%i" (computeScore' counts) // 2188189693529
 
-let (elements', counts') = mapTemplate template'
-let final' = seq { 1 .. 40 } |> Seq.fold(fun elements'' _ -> applyRules' elements'' counts' rules') elements'
-let score''' = computeScore'' counts'
-printfn "%i" score''' // 1588
+// Validate puzzle data
+let pairs' = createPairs template'
+let counts' = createPairCounts template'
+let _ = seq { 1 .. 40 } |> Seq.fold(fun pairs'' _ -> 
+    applyRules' pairs'' counts' rules') pairs'
+printfn "%i" (computeScore' counts') // 2914365137499
