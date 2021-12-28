@@ -4,7 +4,7 @@ open System
 // --- Day 16: Packet Decoder ---
 
 type Payload =
-    | Literal of value : int
+    | Literal of value : uint64
     | Subpackets of packets : Packet seq
 
 and Packet = { 
@@ -12,8 +12,7 @@ and Packet = {
     TypeID : int;
     Payload : Payload }
 
-let readInput filename = 
-    (System.IO.File.ReadAllText filename).ToCharArray() |> seq
+let readInput filename = System.IO.File.ReadAllText filename
 
 let hexToBinary (hex : string) =
     let table = Map [ 
@@ -37,18 +36,12 @@ let hexToBinary (hex : string) =
     binary |> seq
 
 let binaryToDecimal (binary : char seq) = 
-    match binary |> Seq.toArray with
-    | [| '0' |] -> 0
-    | [| '1' |] -> 1
-    | _ ->
-        let s = binary |> String.Concat
-        System.Convert.ToInt32(s, 2);
+    let s = binary |> String.Concat
+    System.Convert.ToInt32(s, 2);
 
-// 1101 0010 1111 1110 0010 1000
-// VVVT TTAA AAAB BBBB CCCC C
-
-// 10111 11110 00101 000
-// AAAAA BBBBB CCCCC
+let binaryToLargeDecimal (binary : char seq) = 
+    let s = binary |> String.Concat
+    System.Convert.ToUInt64(s, 2);
 
 let countBy count = Seq.initInfinite (fun index -> index * count)
 
@@ -66,10 +59,11 @@ let rec decodePacket (binary : char seq) =
         let literal = 
             chunks 
             |> Seq.fold (fun state s -> state + (s |> Seq.skip 1 |> String.Concat)) ""
-            |> binaryToDecimal
+            |> binaryToLargeDecimal
 
+        printfn $"    Value = {literal}"
         let packet = { Packet.Version = version; TypeID = typeID; Payload = Literal(literal); }
-        (packet, 6 + (numChunks * LiteralChunkSize))
+        (packet, binary |> Seq.skip (0 + (numChunks * LiteralChunkSize)))
 
     let rec decodeOperator version typeID binary =
         printfn $"  Decoding operator..."
@@ -79,33 +73,33 @@ let rec decodePacket (binary : char seq) =
         | '0' -> 
             let lengthOfPackets = binaryToDecimal (binary |> Seq.skip 1 |> Seq.take 15)
             printfn $"    Length of packets is {lengthOfPackets}..."
-            let mutable remainingBits = lengthOfPackets
+            //let mutable remainingBits = lengthOfPackets
             let mutable newBinary = binary |> Seq.skip 16 |> Seq.take lengthOfPackets
             let packets = seq {
-                while remainingBits > 0 do
-                    let (packet, bitsDecoded) = decodeSubpacket newBinary
-                    remainingBits <- remainingBits - bitsDecoded
-                    newBinary <- newBinary |> Seq.skip bitsDecoded
+                while not (newBinary |> Seq.isEmpty) do
+                    let (packet, newBinary') = decodeSubpacket newBinary
+                    //remainingBits <- remainingBits - bitsDecoded
+                    newBinary <- newBinary'
                     yield packet
             } 
             let packets' = packets |> Seq.toList
             let packet = { Packet.Version = version; TypeID = typeID; Payload = Subpackets(packets'); }
-            (packet, 16 + lengthOfPackets)
+            (packet, binary |> Seq.skip (16 + lengthOfPackets))
         | '1' ->
             let numberOfPackets = binaryToDecimal (binary |> Seq.skip 1 |> Seq.take 11)
             printfn $"    Number of packets is {numberOfPackets}..."
-            let mutable totalBitsDecoded = 0
+            //let mutable totalBitsDecoded = 12
             let mutable newBinary = binary |> Seq.skip 12
             let packets = seq {
                 for _ in 1 .. numberOfPackets do 
-                    let (packet, bitsDecoded) = decodeSubpacket newBinary
-                    totalBitsDecoded <- totalBitsDecoded + bitsDecoded
-                    newBinary <- newBinary |> Seq.skip bitsDecoded
+                    let (packet, newBinary') = decodeSubpacket newBinary
+                    //totalBitsDecoded <- totalBitsDecoded + bitsDecoded
+                    newBinary <- newBinary'
                     yield packet
             }
             let packets' = packets |> Seq.toList
             let packet = { Packet.Version = version; TypeID = typeID; Payload = Subpackets(packets'); }
-            (packet, 12 + totalBitsDecoded)
+            (packet, newBinary)
         | _ -> failwith $"Unexpected length type ID {lengthTypeID}"
 
     and decodeSubpacket binary =
@@ -116,7 +110,7 @@ let rec decodePacket (binary : char seq) =
         | 4 -> decodeLiteral version typeID (binary |> Seq.skip 6)
         | _ -> decodeOperator version typeID (binary |> Seq.skip 6)
 
-    let (p, bitsDecoded) = decodeSubpacket binary
+    let (p, _) = decodeSubpacket binary
     p
 
 let rec printPacket indentLevel (packet : Packet) = 
@@ -137,31 +131,34 @@ let rec sumVersions packet =
 // --- Part One ---
 
 // Sample data
-// let sampleLiteralPacket = decodePacket (hexToBinary "D2FE28")
-// printPacket 1 sampleLiteralPacket
+let sampleLiteralPacket = decodePacket (hexToBinary "D2FE28")
+printPacket 1 sampleLiteralPacket
 
-// printfn "==="
+printfn "==="
 
-// let sampleOperatorPacket1 = decodePacket (hexToBinary "38006F45291200")
-// printPacket 1 sampleOperatorPacket1
+let sampleOperatorPacket1 = decodePacket (hexToBinary "38006F45291200")
+printPacket 1 sampleOperatorPacket1
 
-// printfn "==="
+printfn "==="
 
-// let sampleOperatorPacket2 = decodePacket (hexToBinary "EE00D40C823060")
-// printPacket 1 sampleOperatorPacket2
+let sampleOperatorPacket2 = decodePacket (hexToBinary "EE00D40C823060")
+printPacket 1 sampleOperatorPacket2
 
-// printfn "==="
+printfn "==="
 
-let sums = seq { "8A004A801A8002F478";
-      "620080001611562C8802118E34";
-      "C0015000016115A2E0802F182340";
-      "A0016C880162017C3686B18A3D4780"; } |> Seq.skip 1 |> Seq.take 1 |> Seq.map (fun hex ->
+let moreSamples = seq {
+    "8A004A801A8002F478";
+    "620080001611562C8802118E34";
+    "C0015000016115A2E0802F182340";
+    "A0016C880162017C3686B18A3D4780"; }
+let sums = moreSamples |> Seq.map (fun hex ->
     let packet = decodePacket (hexToBinary hex)
     sumVersions packet)
 printfn "%A" sums
-//printfn $"Sum = {sum}")
+
+// Puzzle data
+let input = readInput "input.txt"
+let packet = decodePacket (hexToBinary input)
+printfn "%i" (sumVersions packet)
 
 // --- Part Two ---
-
-
-// TODO: Get clear on bitsProcessed, what to do with it, and padding
