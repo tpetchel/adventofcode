@@ -14,6 +14,10 @@ and Packet = {
 
 let readInput filename = System.IO.File.ReadAllText filename
 
+let debugPrint s =
+    //printfn "%s" s
+    s |> ignore
+
 let hexToBinary (hex : string) =
     let table = Map [ 
         ('0', "0000");
@@ -51,7 +55,7 @@ let LiteralChunkSize = 5
 let rec decodePacket (binary : char seq) =
 
     let decodeLiteral version typeID binary = 
-        printfn $"  Decoding literal..."
+        debugPrint $"  Decoding literal..."
         let countByFives = countBy LiteralChunkSize
         let numChunks = 1 + (countByFives |> Seq.takeWhile (fun index -> binary |> Seq.item index <> '0') |> Seq.length)
         let chunks = binary |> Seq.take (numChunks * LiteralChunkSize) |> Seq.chunkBySize LiteralChunkSize
@@ -61,42 +65,42 @@ let rec decodePacket (binary : char seq) =
             |> Seq.fold (fun state s -> state + (s |> Seq.skip 1 |> String.Concat)) ""
             |> binaryToLargeDecimal
 
-        printfn $"    Value = {literal}"
+        debugPrint $"    Value = {literal}"
         let packet = { Packet.Version = version; TypeID = typeID; Payload = Literal(literal); }
-        (packet, binary |> Seq.skip (0 + (numChunks * LiteralChunkSize)))
+        (packet, binary |> Seq.skip (numChunks * LiteralChunkSize))
 
     let rec decodeOperator version typeID binary =
-        printfn $"  Decoding operator..."
+        debugPrint $"  Decoding operator..."
         let lengthTypeID = binary |> Seq.head
-        printfn $"    Length type ID is {lengthTypeID}..."
+        debugPrint $"    Length type ID is {lengthTypeID}..."
         match lengthTypeID with
         | '0' -> 
             let lengthOfPackets = binaryToDecimal (binary |> Seq.skip 1 |> Seq.take 15)
-            printfn $"    Length of packets is {lengthOfPackets}..."
-            //let mutable remainingBits = lengthOfPackets
+            debugPrint $"    Length of packets is {lengthOfPackets}..."
+            // TODO: Use a fold to make immutable?
             let mutable newBinary = binary |> Seq.skip 16 |> Seq.take lengthOfPackets
             let packets = seq {
                 while not (newBinary |> Seq.isEmpty) do
                     let (packet, newBinary') = decodeSubpacket newBinary
-                    //remainingBits <- remainingBits - bitsDecoded
                     newBinary <- newBinary'
                     yield packet
             } 
+            // TODO: Use toList to eagerly evaluate. Not idiomatic.
             let packets' = packets |> Seq.toList
             let packet = { Packet.Version = version; TypeID = typeID; Payload = Subpackets(packets'); }
             (packet, binary |> Seq.skip (16 + lengthOfPackets))
         | '1' ->
             let numberOfPackets = binaryToDecimal (binary |> Seq.skip 1 |> Seq.take 11)
-            printfn $"    Number of packets is {numberOfPackets}..."
-            //let mutable totalBitsDecoded = 12
+            debugPrint $"    Number of packets is {numberOfPackets}..."
+            // TODO: Use a fold to make immutable?
             let mutable newBinary = binary |> Seq.skip 12
             let packets = seq {
                 for _ in 1 .. numberOfPackets do 
                     let (packet, newBinary') = decodeSubpacket newBinary
-                    //totalBitsDecoded <- totalBitsDecoded + bitsDecoded
                     newBinary <- newBinary'
                     yield packet
             }
+            // TODO: Use toList to eagerly evaluate. Not idiomatic.
             let packets' = packets |> Seq.toList
             let packet = { Packet.Version = version; TypeID = typeID; Payload = Subpackets(packets'); }
             (packet, newBinary)
@@ -105,7 +109,7 @@ let rec decodePacket (binary : char seq) =
     and decodeSubpacket binary =
         let version = binaryToDecimal (binary |> Seq.take 3)
         let typeID = binaryToDecimal (binary |> Seq.skip 3 |> Seq.take 3)
-        printfn $"Found packet with version {version}; typeID {typeID}..."
+        debugPrint $"Found packet with version {version}; typeID {typeID}..."
         match typeID with
         | 4 -> decodeLiteral version typeID (binary |> Seq.skip 6)
         | _ -> decodeOperator version typeID (binary |> Seq.skip 6)
@@ -162,3 +166,47 @@ let packet = decodePacket (hexToBinary input)
 printfn "%i" (sumVersions packet)
 
 // --- Part Two ---
+
+let rec evaluate packet =
+    match packet.Payload with
+    | Literal literal -> literal
+    | Subpackets packets -> 
+        let values = packets |> Seq.map (fun packet -> evaluate packet)
+        match packet.TypeID with
+        | 0 -> values |> Seq.sum
+        | 1 -> values |> Seq.fold (fun state v -> state * v) 1UL
+        | 2 -> values |> Seq.min
+        | 3 -> values |> Seq.max
+        | 5 ->
+            let a = values |> Seq.head
+            let b = values |> Seq.last
+            if a > b then 1UL
+            else 0UL
+        | 6 ->
+            let a = values |> Seq.head
+            let b = values |> Seq.last
+            if a < b then 1UL
+            else 0UL
+        | 7 ->
+            let a = values |> Seq.head
+            let b = values |> Seq.last
+            if a = b then 1UL
+            else 0UL
+        | _ -> failwith $"Unexpected type ID {packet.TypeID}"
+
+let evenMoreSamples = seq {
+    "C200B40A82";
+    "04005AC33890";
+    "880086C3E88112";
+    "CE00C43D881120";
+    "D8005AC2A8F0";
+    "F600BC2D8F";
+    "9C005AC2F8F0";
+    "9C0141080250320F1802104A08"; }
+evenMoreSamples |> Seq.iter (fun hex ->
+    let packet = decodePacket (hexToBinary hex)
+    let result = evaluate packet
+    printfn "%u" result)
+
+// Puzzle data
+printfn "%u" (evaluate packet)
