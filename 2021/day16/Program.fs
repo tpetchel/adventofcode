@@ -56,22 +56,23 @@ let countBy count = Seq.initInfinite (fun index -> index * count)
 let LiteralChunkSize = 5
 
 let rec decodePacket (binary : char seq) =
-    let decodeLiteral bitsRead binary = 
+
+    let decodeLiteral version typeID binary = 
+        printfn $"  Decoding literal..."
         let countByFives = countBy LiteralChunkSize
         let numChunks = 1 + (countByFives |> Seq.takeWhile (fun index -> binary |> Seq.item index <> '0') |> Seq.length)
         let chunks = binary |> Seq.take (numChunks * LiteralChunkSize) |> Seq.chunkBySize LiteralChunkSize
         // Concatenate last 4 bits of each chunk
-        let literalString = chunks |> Seq.fold (fun state s -> state + (s |> Seq.skip 1 |> String.Concat)) ""
-        let literal = binaryToDecimal literalString
+        let literal = 
+            chunks 
+            |> Seq.fold (fun state s -> state + (s |> Seq.skip 1 |> String.Concat)) ""
+            |> binaryToDecimal
 
-        let n = bitsRead + (numChunks * LiteralChunkSize) // number of bits processed
-        let a = n &&& 15 // temporary for next calculation
-        let t = n - a + ((a + 15) &&& 16) // next multiple of 4
-        let padding = 0//(t - n) // remaining bits in last chunk
+        let packet = { Packet.Version = version; TypeID = typeID; Payload = Literal(literal); }
+        (packet, 6 + (numChunks * LiteralChunkSize))
 
-        (literal, n + padding)
-
-    let rec decodeOperator binary =
+    let rec decodeOperator version typeID binary =
+        printfn $"  Decoding operator..."
         let lengthTypeID = binary |> Seq.head
         printfn $"    Length type ID is {lengthTypeID}..."
         match lengthTypeID with
@@ -86,8 +87,10 @@ let rec decodePacket (binary : char seq) =
                     remainingBits <- remainingBits - bitsDecoded
                     newBinary <- newBinary |> Seq.skip bitsDecoded
                     yield packet
-                }
-            (packets, 16 + lengthOfPackets)
+            } 
+            let packets' = packets |> Seq.toList
+            let packet = { Packet.Version = version; TypeID = typeID; Payload = Subpackets(packets'); }
+            (packet, 16 + lengthOfPackets)
         | '1' ->
             let numberOfPackets = binaryToDecimal (binary |> Seq.skip 1 |> Seq.take 11)
             printfn $"    Number of packets is {numberOfPackets}..."
@@ -100,10 +103,9 @@ let rec decodePacket (binary : char seq) =
                     newBinary <- newBinary |> Seq.skip bitsDecoded
                     yield packet
             }
-            (packets, totalBitsDecoded)
-            // { 1 .. numberOfPackets } |> Seq.fold(fun (packets, bitsDecoded) _ ->
-            //     let (packets', remaining') = decodeSubpacket packets
-            //     (Seq.concat packets packets', remaining')) ((binary |> Seq.skip 12), 12)
+            let packets' = packets |> Seq.toList
+            let packet = { Packet.Version = version; TypeID = typeID; Payload = Subpackets(packets'); }
+            (packet, 12 + totalBitsDecoded)
         | _ -> failwith $"Unexpected length type ID {lengthTypeID}"
 
     and decodeSubpacket binary =
@@ -111,16 +113,8 @@ let rec decodePacket (binary : char seq) =
         let typeID = binaryToDecimal (binary |> Seq.skip 3 |> Seq.take 3)
         printfn $"Found packet with version {version}; typeID {typeID}..."
         match typeID with
-        | 4 ->
-            printfn $"  Decoding literal..."
-            let (literal, bitsDecoded) = decodeLiteral 6 (binary |> Seq.skip 6)
-            let packet = { Packet.Version = version; TypeID = typeID; Payload = Literal(literal); }
-            (packet, bitsDecoded + 0)//6)
-        | _ -> 
-            printfn $"  Decoding operator..."
-            let (subpackets, bitsDecoded) = decodeOperator (binary |> Seq.skip 6)
-            let packet = { Packet.Version = version; TypeID = typeID; Payload = Subpackets(subpackets); }
-            (packet, bitsDecoded + 6)
+        | 4 -> decodeLiteral version typeID (binary |> Seq.skip 6)
+        | _ -> decodeOperator version typeID (binary |> Seq.skip 6)
 
     let (p, bitsDecoded) = decodeSubpacket binary
     p
@@ -161,7 +155,7 @@ let rec sumVersions packet =
 let sums = seq { "8A004A801A8002F478";
       "620080001611562C8802118E34";
       "C0015000016115A2E0802F182340";
-      "A0016C880162017C3686B18A3D4780"; } |> Seq.skip 2 |> Seq.take 1 |> Seq.map (fun hex ->
+      "A0016C880162017C3686B18A3D4780"; } |> Seq.skip 1 |> Seq.take 1 |> Seq.map (fun hex ->
     let packet = decodePacket (hexToBinary hex)
     sumVersions packet)
 printfn "%A" sums
