@@ -49,37 +49,47 @@ let launch (target : Target) =
         else step (x + dx, y + dy) (applyDrag dx, applyGravity dy) (max y gy) target
 
     let dxs = seq { 1 .. target.X' }
-    dxs |> Seq.fold (fun gy dx -> 
-        // TODO: Not sure when to start
-        let mutable dy = -100
-        let mutable gy' = System.Int32.MinValue
-        let mutable continueLooping = true
-        while continueLooping do
-            match step (0,0) (dx, dy) 0 target with
-            | Some(Result.Miss, _) -> 
-                // TODO: Not sure when to cutoff
-                // Maybe see something converge...
-                if dy > 100 then continueLooping <- false
-            | Some(Result.Overshot, _) -> continueLooping <- false
-            | Some(Result.Hit, gy'') -> 
-                printfn $"Hit: {dx},{dy} -> {gy''}"
-                gy' <- max gy' gy''
-            | _ -> failwith "Unexpected result"
-            dy <- dy + 1
-        max gy gy') System.Int32.MinValue
+    dxs |> Seq.collect (fun dx -> 
+        seq {
+            // TODO: Not sure when to start
+            let mutable dy = -100
+            // TODO: Not sure how to make more functional, but this works for now...
+            let mutable continueLooping = true
+            while continueLooping do
+                match step (0,0) (dx, dy) 0 target with
+                | Some(Result.Miss, _) -> 
+                    // TODO: Not sure when to cutoff
+                    // Maybe see something converge, like not making forward progress...
+                    if dy > 100 then continueLooping <- false
+                | Some(Result.Overshot, _) -> continueLooping <- false
+                | Some(Result.Hit, gy) -> 
+                    printfn $"Hit: {dx},{dy} (greatest y = {gy})"
+                    yield (dx, dy, gy)
+                | _ -> failwith "Unexpected result"
+                dy <- dy + 1
+        })
 
 // --- Part One ---
 
 // Sample input
 let sampleTarget = parseTarget "target area: x=20..30, y=-10..-5"
 printfn "%A" sampleTarget
-printfn "%i" (launch sampleTarget) // 45
+let sampleResults = launch sampleTarget
+let sampleGreatestY = sampleResults |> Seq.map (fun (_,_,y) -> y) |> Seq.max 
+printfn "%i" sampleGreatestY // 45
 
 // Puzzle input
-// let target = parseTarget "target area: x=281..311, y=-74..-54"
-// printfn "%A" target
-// printfn "%i" (launch target) // 2701
+let target = parseTarget "target area: x=281..311, y=-74..-54"
+printfn "%A" target
+let results = launch target
+let greatestY = results |> Seq.map (fun (_,_,y) -> y) |> Seq.max 
+printfn "%i" greatestY // 2701
 
 // --- Part Two ---
 
-// also return all hit velocities, also consider negative dy values
+// Easy!
+
+// Sample input
+printfn "%i" (sampleResults |> Seq.length) // 112
+// Puzzle input
+printfn "%i" (results |> Seq.length) // 1070
