@@ -349,7 +349,7 @@ let (|Split|_|) (n: Element)  =
             | Constant(c) ->
                 if c < 10UL then n
                 else
-                    printfn $"Constant {c} splits!"
+                    //printfn $"Constant {c} splits!"
                     foundMatch <- true
                     if isOdd c then
                         let t = (c + 1UL) / 2UL
@@ -375,15 +375,15 @@ let total elements =
     let rec reduce (n: Element) =
         match n with
         | Explode(m) ->
-            printfn $"After explode: {m}"
+            //printfn $"After explode: {m}"
             reduce(m)
         | Split(m) ->
-            printfn $"After split: {m}"
+            //printfn $"After split: {m}"
             reduce(m)
         | _ -> n
     let add (n1: Element) (n2: Element) =
-        printfn $"  {n1}"
-        printfn $"+ {n2}"
+        //printfn $"  {n1}"
+        //printfn $"+ {n2}"
         reduce (Pair (n1, n2))
     Array.reduce add elements
 
@@ -477,6 +477,27 @@ printfn $"{mag'}" // 4243
 
 // --- Part Two ---
 
+let permute elements =
+    let count = elements |> Array.length
+    seq {
+        for i = 0 to (count - 1) do
+            for j = 0 to (count - 1) do
+                if i <> j then yield [| elements[i]; elements[j] |]
+    }
+ 
 // Sample data
 
+//let permutations = sampleHomework |> Array.toList |> permute
+let permutations = permute sampleHomework
+let mags = permutations |> Seq.map (fun elements -> 
+    (elements, magitude (total elements)))
+let (_, maxMag) = mags |> Seq.maxBy (fun (_, mag) -> mag)
+printfn $"{maxMag}" // 3993
+
+
 // Puzzle data
+let permutations' = permute homework
+let mags' = permutations' |> Seq.map (fun elements -> 
+    (elements, magitude (total elements)))
+let (_, maxMag') = mags' |> Seq.maxBy (fun (_, mag) -> mag)
+printfn $"{maxMag'}" // 4701
