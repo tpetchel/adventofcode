@@ -1,5 +1,6 @@
 ﻿// https://adventofcode.com/2021/day/18
 open System
+open System.Text.RegularExpressions
 
 // --- Day 18: Snailfish ---
 
@@ -52,45 +53,204 @@ let parse s =
     | PairExpr(p, _) -> Pair(p)
     | _ -> failwith "Syntax error"
 
-let (|Explode|_|) (n: Element)  =
-    let mutable foundMatch = false
-    let rec explode n (leftSibling, rightSibling) nestLevel =
-        //printfn $"{nestLevel} -> {n}"
-        if foundMatch then (n, false)
-        else
-            match n with
-            | Constant(_) -> (n, false)
-            | Pair(e1, e2) -> 
-                if nestLevel = 4 then
-                    printfn $"Pair {n} explodes!"
-                    foundMatch <- true
+                        // The pair's left value is added to the first regular number to the left
+                        // of the exploding pair (if any).
+                        // The pair's right value is added to the first regular number to the right
+                        // of the exploding pair (if any).
+                        // Exploding pairs will always consist of two regular numbers.
+                        // Then, the entire exploding pair is replaced with the regular number 0.
 
-                    // The pair's left value is added to the first regular number to the left
-                    // of the exploding pair (if any).
-                    // The pair's right value is added to the first regular number to the right
-                    // of the exploding pair (if any).
-                    // Exploding pairs will always consist of two regular numbers.
-                    // Then, the entire exploding pair is replaced with the regular number 0.
-                    let c1 = constantValue e1
-                    let c2 = constantValue e2
+type MatchType =
+    | None = 0
+    | Left = 1
+    | Right = 2
 
-                    match leftSibling with
-                    | Some(Constant c) -> (Pair(Constant(c + c1), Constant(0)), true)
-                    | _ -> 
-                        match rightSibling with
-                        | Some(Constant c) -> (Pair(Constant(0), Constant(c + c2)), true)
-                        | _ -> failwith "Expected left or right Constant sibling"
-                else
-                    let nestLevel = nestLevel + 1
-                    match explode e1 (None, Some(e2)) nestLevel with
-                    | (n, true) -> (n, false)
-                    | (n, false) ->
-                        match explode e2 (Some(e1), None) nestLevel with
-                        | (m, true) -> (m, false)
-                        | (m, false) -> (Pair(n, m), false)
-    let (r, _) = explode n (None, None) 0
-    if foundMatch then Some(r)
-    else None
+let isInt (ch: char) =
+   let mutable intvalue = 0
+   //let ch = ch.ToString()
+   System.Int32.TryParse(ch.ToString(), &intvalue)
+
+let (|Explode|_|) (n: Element) =
+    // I gave up trying to process this as a graph, as it's very difficult
+    // to access a node's lexical siblings, let alone update them cleanly.
+    // So here, we basically serialize the object to a string, update the string
+    // directly by using regular expressions, and parse it back out.
+    // Here are the four patterns:
+    // [[[[[9,8],1],2],3],4] (no regular number to the left of [9,8])
+    // [7,[6,[5,[4,[3,2]]]]] (no regular number to the right of [3,2])
+    // [[6,[5,[4,[3,2]]]],1] (nest left)
+    // [1,[[[[9,8],1],2],3]] (nest right)
+    
+    let apply (s: string) (matchType: MatchType) =
+        let t = n.ToString()
+        match matchType with
+        | MatchType.Left ->
+            let index = t.IndexOf("[[[[" + s)
+            let beforeMatch = t[index..0]
+            let leftSiblingIndex = beforeMatch |> Seq.tryFindIndexBack (fun ch -> isInt ch)
+
+            let index = t.IndexOf("[[[[" + s) + 4 + s.Length
+            let afterMatch = t[index..]
+            let rightSiblingIndex = afterMatch |> Seq.tryFindIndex (fun ch -> isInt ch)
+            
+            let matched = Regex.Match(s, "\[(\d)\,(\d)\]")
+            let pairLeft = Int32.Parse(matched.Groups.[1].Value)
+            let pairRight = Int32.Parse(matched.Groups.[2].Value)
+
+            let applyLeft =
+                match leftSiblingIndex with
+                | Some(n) -> 
+                    let leftSibling = Int32.Parse(beforeMatch[n].ToString())
+                    let newValue = leftSibling + pairLeft
+                    let arr = beforeMatch.ToCharArray()
+                    arr[n] <- newValue.ToString()[0]
+                    new string(arr)
+                | None -> beforeMatch
+            let applyRight =
+                match rightSiblingIndex with
+                | Some(n) -> 
+                    let rightSibling = Int32.Parse(afterMatch[n].ToString())
+                    let newValue = rightSibling + pairRight
+                    let arr = afterMatch.ToCharArray()
+                    arr[n] <- newValue.ToString()[0]
+                    new string(arr)
+                | None -> afterMatch
+            Some(parse $"{applyLeft}[[[0{applyRight}")
+        | MatchType.Right ->
+            let index = t.IndexOf(s + "]]]]")
+            let beforeMatch = t[index..]
+            let leftSiblingIndex = beforeMatch |> Seq.tryFindIndexBack (fun ch -> isInt ch)
+
+            let index = t.IndexOf("[[[[" + s) + 4 + s.Length
+            let afterMatch = t[index..]
+            let rightSiblingIndex = afterMatch |> Seq.tryFindIndex (fun ch -> isInt ch)
+            
+            let matched = Regex.Match(s, "\[(\d)\,(\d)\]")
+            let pairLeft = Int32.Parse(matched.Groups.[1].Value)
+            let pairRight = Int32.Parse(matched.Groups.[2].Value)
+
+            let applyLeft =
+                match leftSiblingIndex with
+                | Some(n) -> 
+                    let leftSibling = Int32.Parse(beforeMatch[n].ToString())
+                    let newValue = leftSibling + pairLeft
+                    let arr = beforeMatch.ToCharArray()
+                    arr[n] <- newValue.ToString()[0]
+                    new string(arr)
+                | None -> beforeMatch
+            let applyRight =
+                match rightSiblingIndex with
+                | Some(n) -> 
+                    let rightSibling = Int32.Parse(afterMatch[n].ToString())
+                    let newValue = rightSibling + pairRight
+                    let arr = afterMatch.ToCharArray()
+                    arr[n] <- newValue.ToString()[0]
+                    new string(arr)
+                | None -> afterMatch
+            Some(parse $"{applyLeft}[[[0{applyRight}")
+        | _ -> failwith "Invalid match type"
+
+// [[[[0,7],4],[7,[[8,4],9]]],[1,1]]
+// [    ,7],4],[7,[[8,4],9]]],[1,1]]
+
+        // let patterns = [|
+        //     ("^(\[{4,})\[(\d)\,(\d)\]\,(\d)", (fun (matched: Match) -> 
+        //         let entireMatch = matched.Groups.[0].Value
+        //         let leftBraces = matched.Groups.[1].Value
+        //         let e1 = Int32.Parse(matched.Groups.[2].Value)
+        //         let e2 = Int32.Parse(matched.Groups.[3].Value)
+        //         let right = Int32.Parse(matched.Groups.[4].Value)
+        //         s.Replace(entireMatch, $"{leftBraces}0,{e2 + right}")));
+        //     ("(\d)\,\[(\d)\,(\d)\](\[{4,})$", (fun (matched: Match) -> 
+        //         let entireMatch = matched.Groups.[0].Value
+        //         let left = Int32.Parse(matched.Groups.[1].Value)
+        //         let e1 = Int32.Parse(matched.Groups.[2].Value)
+        //         let e2 = Int32.Parse(matched.Groups.[3].Value)
+        //         let rightBraces = matched.Groups.[4].Value
+        //         s.Replace(entireMatch, $"{e1 + left},0{rightBraces}")))
+        // |]
+
+        // let matches = 
+        //     patterns 
+        //     |> Array.map (fun (pattern, apply) -> (Regex.Match(s, pattern), apply))
+        //     |> Array.choose (fun (matched, apply) -> 
+        //         if matched.Success then Some(matched, apply); else None)
+        // if (matches |> Array.isEmpty) then None
+        // else 
+        //     let (matched, apply) = matches |> Array.minBy (fun (matched : Match, _) -> matched.Index)
+        //     Some(parse (apply matched))
+
+    let getMatchType lbraces rbraces =
+        if lbraces > rbraces then MatchType.Left
+        else MatchType.Right
+
+    let scan (n: Element) = 
+        let mutable matchType = MatchType.None
+        let rec explode n nestLevel lbraces rbraces =
+            //printfn $"{nestLevel} -> {n}"
+            if matchType <> MatchType.None then (n, false)
+            else
+                match n with
+                | Constant(_) -> (n, false)
+                | Pair(e1, e2) -> 
+                    if nestLevel = 4 then
+                        printfn $"Pair {n} explodes!"
+                        matchType <- getMatchType lbraces rbraces
+                        (Pair(e1, e2), true)
+                    else
+                        let nestLevel = nestLevel + 1
+                        match explode e1 nestLevel (1 + lbraces) rbraces with
+                        | (n, true) -> (n, true)
+                        | (n, false) ->
+                            match explode e2 nestLevel lbraces (1 + rbraces) with
+                            | (m, true) -> (m, true)
+                            | (m, false) -> (m, false)
+        let (r, _) = explode n 0 0 0
+        if matchType <> MatchType.None then Some(r.ToString(), matchType)
+        else None
+
+    let r = scan n
+    match r with 
+    | Some(m, isLeftMatch) -> apply m isLeftMatch
+    | None -> None
+    // let mutable foundMatch = false
+    // let rec explode n (leftSibling, rightSibling) nestLevel =
+    //     //printfn $"{nestLevel} -> {n}"
+    //     if foundMatch then (n, false)
+    //     else
+    //         match n with
+    //         | Constant(_) -> (n, false)
+    //         | Pair(e1, e2) -> 
+    //             if nestLevel = 4 then
+    //                 printfn $"Pair {n} explodes!"
+    //                 foundMatch <- true
+
+    //                 // The pair's left value is added to the first regular number to the left
+    //                 // of the exploding pair (if any).
+    //                 // The pair's right value is added to the first regular number to the right
+    //                 // of the exploding pair (if any).
+    //                 // Exploding pairs will always consist of two regular numbers.
+    //                 // Then, the entire exploding pair is replaced with the regular number 0.
+    //                 let c1 = constantValue e1
+    //                 let c2 = constantValue e2
+
+    //                 match leftSibling with
+    //                 | Some(Constant c) -> (Pair(Constant(c + c1), Constant(0)), true)
+    //                 | _ -> 
+    //                     match rightSibling with
+    //                     | Some(Constant c) -> (Pair(Constant(0), Constant(c + c2)), true)
+    //                     | _ -> failwith "Expected left or right Constant sibling"
+    //             else
+    //                 let nestLevel = nestLevel + 1
+    //                 match explode e1 (None, Some(e2)) nestLevel with
+    //                 | (n, true) -> (n, false)
+    //                 | (n, false) ->
+    //                     match explode e2 (Some(e1), None) nestLevel with
+    //                     | (m, true) -> (m, false)
+    //                     | (m, false) -> (Pair(n, m), false)
+    // let (r, _) = explode n (None, None) 0
+    // if foundMatch then Some(r)
+    // else None
 
 let (|Split|_|) (n: Element)  =
     // Even numbers are divisible by 2.
@@ -144,55 +304,46 @@ let total elements =
 
 // Sample data
 
-let samples = [|
-    "[[[0,[4,5]],[0,0]],[[[4,5],[2,6]],[9,5]]]";
-    "[7,[[[3,7],[4,3]],[[6,3],[8,8]]]]";
-    "[[2,[[0,8],[3,4]]],[[[6,7],1],[7,[1,6]]]]";
-    "[[[[2,4],7],[6,[0,5]]],[[[6,8],[2,8]],[[2,1],[4,5]]]]";
-    "[7,[5,[[3,8],[1,4]]]]";
-    "[[2,[2,2]],[8,[8,1]]]";
-    "[2,9]";
-    "[1,[[[9,3],9],[[9,0],[0,7]]]]";
-    "[[[5,[7,4]],7],1]";
-    "[[[[4,2],2],6],[8,7]]"; |] |> Array.map (fun s -> parse s)
+// let samples = [|
+//     "[[[0,[4,5]],[0,0]],[[[4,5],[2,6]],[9,5]]]";
+//     "[7,[[[3,7],[4,3]],[[6,3],[8,8]]]]";
+//     "[[2,[[0,8],[3,4]]],[[[6,7],1],[7,[1,6]]]]";
+//     "[[[[2,4],7],[6,[0,5]]],[[[6,8],[2,8]],[[2,1],[4,5]]]]";
+//     "[7,[5,[[3,8],[1,4]]]]";
+//     "[[2,[2,2]],[8,[8,1]]]";
+//     "[2,9]";
+//     "[1,[[[9,3],9],[[9,0],[0,7]]]]";
+//     "[[[5,[7,4]],7],1]";
+//     "[[[[4,2],2],6],[8,7]]"; |] |> Array.map (fun s -> parse s)
 
-//samples |> Array.iter (fun s -> printfn $"{s}")
-//printfn "==="
+// printfn "==="
+// let t = parse "[[[[[9,8],1],2],3],4]"
+// let _ = total [| t |]
+// printfn $"{t}"
 
-// let sum = (add, samples) ||> Array.reduce
-// printfn $"{sum}"
-
-//let sum = total samples
-//printfn $"{sum}"
-
-printfn "==="
-let t = parse "[[[[[9,8],1],2],3],4]"
-let _ = total [| t |]
-printfn $"{t}"
-
-match t with
-| Explode(t') | Split(t') -> printfn $"{t'}"
-| _ -> printfn "None"
+// match t with
+// | Explode(t') | Split(t') -> printfn $"{t'}"
+// | _ -> printfn "None"
 
 
-printfn "==="
-let t' = parse "[7,[6,[5,[4,[3,2]]]]]"
-let _ = total [| t' |]
-printfn $"{t'}"
+// printfn "==="
+// let t' = parse "[7,[6,[5,[4,[3,2]]]]]"
+// let _ = total [| t' |]
+// printfn $"{t'}"
 
-match t' with
-| Explode(t'') | Split(t'') -> printfn $"{t''}"
-| _ -> printfn "None"
+// match t' with
+// | Explode(t'') | Split(t'') -> printfn $"{t''}"
+// | _ -> printfn "None"
 
 
-printfn "==="
-let t'' = parse "[[3,[2,[8,0]]],[9,[5,[4,[3,2]]]]]"
-let _ = total [| t'' |]
-printfn $"{t''}"
+// printfn "==="
+// let t'' = parse "[[3,[2,[8,0]]],[9,[5,[4,[3,2]]]]]"
+// let _ = total [| t'' |]
+// printfn $"{t''}"
 
-match t'' with
-| Explode(t''') | Split(t''') -> printfn $"{t'''}"
-| _ -> printfn "None"
+// match t'' with
+// | Explode(t''') | Split(t''') -> printfn $"{t'''}"
+// | _ -> printfn "None"
 
 printfn "==="
 
