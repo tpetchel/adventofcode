@@ -55,7 +55,7 @@ let parse s =
 let (|Explode|_|) (n: Element)  =
     let mutable foundMatch = false
     let rec explode n (leftSibling, rightSibling) nestLevel =
-        printfn $"{nestLevel} -> {n}"
+        //printfn $"{nestLevel} -> {n}"
         if foundMatch then (n, false)
         else
             match n with
@@ -93,12 +93,48 @@ let (|Explode|_|) (n: Element)  =
     else None
 
 let (|Split|_|) (n: Element)  =
-   None
+    // Even numbers are divisible by 2.
+    let isEven x = (x % 2) = 0
+    // Odd numbers are not even.
+    let isOdd x = isEven x = false
+
+    let mutable foundMatch = false
+    let rec split n =
+        if foundMatch then (n, false)
+        else
+            match n with
+            | Constant(c) ->
+                if c < 10 then
+                    (n, false)
+                else
+                    printfn $"Constant {c} splits!"
+                    foundMatch <- true
+                    if isOdd c then
+                        let t = (c + 1) / 2
+                        (Pair(Constant(t - 1), Constant(t)), true)
+                    else
+                        let t = c / 2
+                        (Pair(Constant(t), Constant(t)), true)
+            | Pair(e1, e2) ->
+                match split e1 with
+                    | (n, true) -> (n, false)
+                    | (n, false) ->
+                        match split e2 with
+                        | (m, true) -> (m, false)
+                        | (m, false) -> (Pair(n, m), false)
+    let (r, _) = split n
+    if foundMatch then Some(r)
+    else None
 
 let total elements =
     let rec reduce (n: Element) =
         match n with
-        | Explode(n') | Split(n') -> reduce(n')
+        | Explode(n') ->
+            printfn $"After explode: {n'}"
+            reduce(n')
+        | Split(n') ->
+            printfn $"After split: {n'}"
+            reduce(n')
         | _ -> n
     let add (n1: Element) (n2: Element) =
         reduce (Pair (n1, n2))
@@ -158,6 +194,15 @@ match t'' with
 | Explode(t''') | Split(t''') -> printfn $"{t'''}"
 | _ -> printfn "None"
 
+printfn "==="
+
+let x = parse "[[[[4,3],4],4],[7,[[8,4],9]]]"
+let y = parse "[1,1]"
+let z = total [| x; y |]
+printfn $"{z}"
+
+// [[[[0,7],4],[7,[6,7]]],[1,1]]
+// [[[[0,7],4],[[7,8],[6,0]]],[8,1]]
 // Puzzle data
 
 // --- Part Two ---
