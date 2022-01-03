@@ -5,7 +5,7 @@ open System.Text.RegularExpressions
 // --- Day 18: Snailfish ---
 
 type Element =
-    | Constant of int
+    | Constant of uint64
     | Pair of Element * Element
     with override this.ToString() =
              match this with
@@ -26,26 +26,38 @@ let (|TL|_|) (prefix: string) (s: string) =
     else
         None
 
+let isDigit (ch: char) =
+   let mutable intvalue = 0UL
+   //let ch = ch.ToString()
+   System.UInt64.TryParse(ch.ToString(), &intvalue)
+
 let (|ConstExpr|_|) (str: string) =
-   let mutable intvalue = 0
-   let ch = str[0].ToString()
-   if System.Int32.TryParse(ch, &intvalue) then Some(ch, str.Substring(1))
-   else None
+    let mutable intvalue = 0UL
+    let digits = str |> Seq.takeWhile isDigit |> String.Concat
+    if System.UInt64.TryParse(digits, &intvalue) then Some(digits, str.Substring(digits.Length))
+    else None
+    
+    // let ch2 = str[0..1]
+    // if System.Int32.TryParse(ch2, &intvalue) then Some(ch2, str.Substring(2))
+    // else
+    //     let ch = str[0].ToString()
+    //     if System.Int32.TryParse(ch, &intvalue) then Some(ch, str.Substring(1))
+    //     else None
 
 let rec (|PairExpr|_|) (s: string) =
     match s with
     // [const,const]
     | TL "[" (ConstExpr(n1, (TL "," (ConstExpr(n2, (TL "]" rest)))))) -> 
-        Some ((Constant(Int32.Parse(n1)), Constant(Int32.Parse(n2))), rest)
+        Some ((Constant(UInt64.Parse(n1)), Constant(UInt64.Parse(n2))), rest)
     // [pair,pair]
     | TL "[" (PairExpr(n1, (TL "," (PairExpr(n2, (TL "]" rest)))))) -> 
         Some ((Pair(n1), Pair(n2)), rest)
     // [const,pair]
     | TL "[" (ConstExpr(n1, (TL "," (PairExpr(n2, (TL "]" rest)))))) -> 
-        Some ((Constant(Int32.Parse(n1)), Pair(n2)), rest)
+        Some ((Constant(UInt64.Parse(n1)), Pair(n2)), rest)
     // [pair,const]
     | TL "[" (PairExpr(n1, (TL "," (ConstExpr(n2, (TL "]" rest)))))) -> 
-        Some ((Pair(n1), Constant(Int32.Parse(n2))), rest)
+        Some ((Pair(n1), Constant(UInt64.Parse(n2))), rest)
     | _ -> None
 
 let parse s =
@@ -65,12 +77,81 @@ type MatchType =
     | Left = 1
     | Right = 2
 
-let isInt (ch: char) =
-   let mutable intvalue = 0
-   //let ch = ch.ToString()
-   System.Int32.TryParse(ch.ToString(), &intvalue)
+
 
 let (|Explode|_|) (n: Element) =
+    let extractPair (t: string) i i' =
+        let t' = t[i..i']
+        let matched = Regex.Match(t', "\[(\d+)\,(\d+)\]")
+        let pairLeft = UInt64.Parse(matched.Groups.[1].Value)
+        let pairRight = UInt64.Parse(matched.Groups.[2].Value)
+        (pairLeft, pairRight)
+    let findNextNumber startIndex incrementBy (chars: char array) =
+        let rec findStart currIndex incrementBy (chars: char array) =
+            if currIndex < 0 || currIndex >= (chars |> Array.length) then None
+            else
+                if isDigit chars[currIndex] then Some(currIndex)
+                else findStart (currIndex + incrementBy) incrementBy chars
+        let rec findEnd currIndex incrementBy (chars: char array) =
+            if currIndex < 0 || currIndex >= (chars |> Array.length) then (currIndex - incrementBy)
+            else
+                if isDigit chars[currIndex] then findEnd (currIndex + incrementBy) incrementBy chars
+                else (currIndex - incrementBy)
+        let start = findStart startIndex incrementBy chars
+        match start with
+        | Some(startIndex) ->
+            let endIndex = findEnd (startIndex + incrementBy) incrementBy chars 
+            let i1 = min startIndex endIndex
+            let i2 = max startIndex endIndex
+            Some(i1, i2)
+        | None -> None
+    let rec findPair currIndex lastStartIndex targetDepth leftCount (chars: char array) =
+        if currIndex >= (chars |> Array.length) then None
+        else
+            match chars[currIndex] with
+            | '[' -> findPair (currIndex + 1) currIndex targetDepth (leftCount + 1) chars
+            | ']' ->
+                if (leftCount - 1) = targetDepth then Some(lastStartIndex, currIndex)
+                else findPair (currIndex + 1) lastStartIndex targetDepth (leftCount - 1) chars
+            | _ -> findPair (currIndex + 1) lastStartIndex targetDepth leftCount chars
+
+    let t = n.ToString()
+    let range = findPair 0 -1 4 0 (t.ToCharArray())
+    match range with
+    | Some(i,i') -> 
+        let (pairLeft, pairRight) = extractPair t i i'
+
+        let t' = t.Remove(i, i' - i + 1).Insert(i, "0")
+        let chars' = t'.ToCharArray()
+
+        let leftSiblingRange = findNextNumber (i-1) -1 chars'
+        let rightSiblingRange = findNextNumber (i+1) 1 chars'
+
+        let applyRight =
+            match rightSiblingRange with
+            | Some(startIndex, endIndex) -> 
+                let rightSibling = UInt64.Parse(t'[startIndex..endIndex])
+                let newValue = rightSibling + pairRight
+                t'.Remove(startIndex, rightSibling.ToString().Length).Insert(startIndex, newValue.ToString())
+                //let chars' = t'.ToCharArray()
+                //chars'[n] <- newValue.ToString()[0]
+                //new string(chars')
+            | None -> t'
+
+        let applyLeft =
+            match leftSiblingRange with
+            | Some(startIndex, endIndex) -> 
+                let leftSibling = UInt64.Parse(t'[startIndex..endIndex])
+                let newValue = leftSibling + pairLeft
+                applyRight.Remove(startIndex, leftSibling.ToString().Length).Insert(startIndex, newValue.ToString())
+                // let chars' = applyRight.ToCharArray()
+                // chars'[n] <- newValue.ToString()[0]
+                // new string(chars')
+            | None -> applyRight
+
+        Some(parse applyLeft)
+    | None -> None
+
     // I gave up trying to process this as a graph, as it's very difficult
     // to access a node's lexical siblings, let alone update them cleanly.
     // So here, we basically serialize the object to a string, update the string
@@ -81,74 +162,76 @@ let (|Explode|_|) (n: Element) =
     // [[6,[5,[4,[3,2]]]],1] (nest left)
     // [1,[[[[9,8],1],2],3]] (nest right)
     
-    let apply (s: string) (matchType: MatchType) =
-        let t = n.ToString()
-        match matchType with
-        | MatchType.Left ->
-            let index = t.IndexOf("[[[[" + s)
-            let beforeMatch = t[index..0]
-            let leftSiblingIndex = beforeMatch |> Seq.tryFindIndexBack (fun ch -> isInt ch)
+    
 
-            let index = t.IndexOf("[[[[" + s) + 4 + s.Length
-            let afterMatch = t[index..]
-            let rightSiblingIndex = afterMatch |> Seq.tryFindIndex (fun ch -> isInt ch)
+    // let apply (s: string) (matchType: MatchType) =
+    //     let t = n.ToString()
+    //     match matchType with
+    //     | MatchType.Left ->
+    //         let index = t.IndexOf("[[[[" + s)
+    //         let beforeMatch = t[index..0]
+    //         let leftSiblingIndex = beforeMatch |> Seq.tryFindIndexBack (fun ch -> isInt ch)
+
+    //         let index = t.IndexOf("[[[[" + s) + 4 + s.Length
+    //         let afterMatch = t[index..]
+    //         let rightSiblingIndex = afterMatch |> Seq.tryFindIndex (fun ch -> isInt ch)
             
-            let matched = Regex.Match(s, "\[(\d)\,(\d)\]")
-            let pairLeft = Int32.Parse(matched.Groups.[1].Value)
-            let pairRight = Int32.Parse(matched.Groups.[2].Value)
+    //         let matched = Regex.Match(s, "\[(\d)\,(\d)\]")
+    //         let pairLeft = Int32.Parse(matched.Groups.[1].Value)
+    //         let pairRight = Int32.Parse(matched.Groups.[2].Value)
 
-            let applyLeft =
-                match leftSiblingIndex with
-                | Some(n) -> 
-                    let leftSibling = Int32.Parse(beforeMatch[n].ToString())
-                    let newValue = leftSibling + pairLeft
-                    let arr = beforeMatch.ToCharArray()
-                    arr[n] <- newValue.ToString()[0]
-                    new string(arr)
-                | None -> beforeMatch
-            let applyRight =
-                match rightSiblingIndex with
-                | Some(n) -> 
-                    let rightSibling = Int32.Parse(afterMatch[n].ToString())
-                    let newValue = rightSibling + pairRight
-                    let arr = afterMatch.ToCharArray()
-                    arr[n] <- newValue.ToString()[0]
-                    new string(arr)
-                | None -> afterMatch
-            Some(parse $"{applyLeft}[[[0{applyRight}")
-        | MatchType.Right ->
-            let index = t.IndexOf(s + "]]]]")
-            let beforeMatch = t[index..]
-            let leftSiblingIndex = beforeMatch |> Seq.tryFindIndexBack (fun ch -> isInt ch)
+    //         let applyLeft =
+    //             match leftSiblingIndex with
+    //             | Some(n) -> 
+    //                 let leftSibling = Int32.Parse(beforeMatch[n].ToString())
+    //                 let newValue = leftSibling + pairLeft
+    //                 let arr = beforeMatch.ToCharArray()
+    //                 arr[n] <- newValue.ToString()[0]
+    //                 new string(arr)
+    //             | None -> beforeMatch
+    //         let applyRight =
+    //             match rightSiblingIndex with
+    //             | Some(n) -> 
+    //                 let rightSibling = Int32.Parse(afterMatch[n].ToString())
+    //                 let newValue = rightSibling + pairRight
+    //                 let arr = afterMatch.ToCharArray()
+    //                 arr[n] <- newValue.ToString()[0]
+    //                 new string(arr)
+    //             | None -> afterMatch
+    //         Some(parse $"{applyLeft}[[[0{applyRight}")
+    //     | MatchType.Right ->
+    //         let index = t.IndexOf(s + "]]]]")
+    //         let beforeMatch = t[index..]
+    //         let leftSiblingIndex = beforeMatch |> Seq.tryFindIndexBack (fun ch -> isInt ch)
 
-            let index = t.IndexOf("[[[[" + s) + 4 + s.Length
-            let afterMatch = t[index..]
-            let rightSiblingIndex = afterMatch |> Seq.tryFindIndex (fun ch -> isInt ch)
+    //         let index = t.IndexOf("[[[[" + s) + 4 + s.Length
+    //         let afterMatch = t[index..]
+    //         let rightSiblingIndex = afterMatch |> Seq.tryFindIndex (fun ch -> isInt ch)
             
-            let matched = Regex.Match(s, "\[(\d)\,(\d)\]")
-            let pairLeft = Int32.Parse(matched.Groups.[1].Value)
-            let pairRight = Int32.Parse(matched.Groups.[2].Value)
+    //         let matched = Regex.Match(s, "\[(\d)\,(\d)\]")
+    //         let pairLeft = Int32.Parse(matched.Groups.[1].Value)
+    //         let pairRight = Int32.Parse(matched.Groups.[2].Value)
 
-            let applyLeft =
-                match leftSiblingIndex with
-                | Some(n) -> 
-                    let leftSibling = Int32.Parse(beforeMatch[n].ToString())
-                    let newValue = leftSibling + pairLeft
-                    let arr = beforeMatch.ToCharArray()
-                    arr[n] <- newValue.ToString()[0]
-                    new string(arr)
-                | None -> beforeMatch
-            let applyRight =
-                match rightSiblingIndex with
-                | Some(n) -> 
-                    let rightSibling = Int32.Parse(afterMatch[n].ToString())
-                    let newValue = rightSibling + pairRight
-                    let arr = afterMatch.ToCharArray()
-                    arr[n] <- newValue.ToString()[0]
-                    new string(arr)
-                | None -> afterMatch
-            Some(parse $"{applyLeft}[[[0{applyRight}")
-        | _ -> failwith "Invalid match type"
+    //         let applyLeft =
+    //             match leftSiblingIndex with
+    //             | Some(n) -> 
+    //                 let leftSibling = Int32.Parse(beforeMatch[n].ToString())
+    //                 let newValue = leftSibling + pairLeft
+    //                 let arr = beforeMatch.ToCharArray()
+    //                 arr[n] <- newValue.ToString()[0]
+    //                 new string(arr)
+    //             | None -> beforeMatch
+    //         let applyRight =
+    //             match rightSiblingIndex with
+    //             | Some(n) -> 
+    //                 let rightSibling = Int32.Parse(afterMatch[n].ToString())
+    //                 let newValue = rightSibling + pairRight
+    //                 let arr = afterMatch.ToCharArray()
+    //                 arr[n] <- newValue.ToString()[0]
+    //                 new string(arr)
+    //             | None -> afterMatch
+    //         Some(parse $"{applyLeft}[[[0{applyRight}")
+    //     | _ -> failwith "Invalid match type"
 
 // [[[[0,7],4],[7,[[8,4],9]]],[1,1]]
 // [    ,7],4],[7,[[8,4],9]]],[1,1]]
@@ -180,39 +263,39 @@ let (|Explode|_|) (n: Element) =
         //     let (matched, apply) = matches |> Array.minBy (fun (matched : Match, _) -> matched.Index)
         //     Some(parse (apply matched))
 
-    let getMatchType lbraces rbraces =
-        if lbraces > rbraces then MatchType.Left
-        else MatchType.Right
+    // let getMatchType lbraces rbraces =
+    //     if lbraces > rbraces then MatchType.Left
+    //     else MatchType.Right
 
-    let scan (n: Element) = 
-        let mutable matchType = MatchType.None
-        let rec explode n nestLevel lbraces rbraces =
-            //printfn $"{nestLevel} -> {n}"
-            if matchType <> MatchType.None then (n, false)
-            else
-                match n with
-                | Constant(_) -> (n, false)
-                | Pair(e1, e2) -> 
-                    if nestLevel = 4 then
-                        printfn $"Pair {n} explodes!"
-                        matchType <- getMatchType lbraces rbraces
-                        (Pair(e1, e2), true)
-                    else
-                        let nestLevel = nestLevel + 1
-                        match explode e1 nestLevel (1 + lbraces) rbraces with
-                        | (n, true) -> (n, true)
-                        | (n, false) ->
-                            match explode e2 nestLevel lbraces (1 + rbraces) with
-                            | (m, true) -> (m, true)
-                            | (m, false) -> (m, false)
-        let (r, _) = explode n 0 0 0
-        if matchType <> MatchType.None then Some(r.ToString(), matchType)
-        else None
+    // let scan (n: Element) = 
+    //     let mutable matchType = MatchType.None
+    //     let rec explode n nestLevel lbraces rbraces =
+    //         //printfn $"{nestLevel} -> {n}"
+    //         if matchType <> MatchType.None then (n, false)
+    //         else
+    //             match n with
+    //             | Constant(_) -> (n, false)
+    //             | Pair(e1, e2) -> 
+    //                 if nestLevel = 4 then
+    //                     printfn $"Pair {n} explodes!"
+    //                     matchType <- getMatchType lbraces rbraces
+    //                     (Pair(e1, e2), true)
+    //                 else
+    //                     let nestLevel = nestLevel + 1
+    //                     match explode e1 nestLevel (1 + lbraces) rbraces with
+    //                     | (n, true) -> (n, true)
+    //                     | (n, false) ->
+    //                         match explode e2 nestLevel lbraces (1 + rbraces) with
+    //                         | (m, true) -> (m, true)
+    //                         | (m, false) -> (m, false)
+    //     let (r, _) = explode n 0 0 0
+    //     if matchType <> MatchType.None then Some(r.ToString(), matchType)
+    //     else None
 
-    let r = scan n
-    match r with 
-    | Some(m, isLeftMatch) -> apply m isLeftMatch
-    | None -> None
+    // let r = scan n
+    // match r with 
+    // | Some(m, isLeftMatch) -> apply m isLeftMatch
+    // | None -> None
     // let mutable foundMatch = false
     // let rec explode n (leftSibling, rightSibling) nestLevel =
     //     //printfn $"{nestLevel} -> {n}"
@@ -254,67 +337,64 @@ let (|Explode|_|) (n: Element) =
 
 let (|Split|_|) (n: Element)  =
     // Even numbers are divisible by 2.
-    let isEven x = (x % 2) = 0
+    let isEven x = (x % 2UL) = 0UL
     // Odd numbers are not even.
     let isOdd x = isEven x = false
 
     let mutable foundMatch = false
     let rec split n =
-        if foundMatch then (n, false)
+        if foundMatch then n
         else
             match n with
             | Constant(c) ->
-                if c < 10 then
-                    (n, false)
+                if c < 10UL then n
                 else
                     printfn $"Constant {c} splits!"
                     foundMatch <- true
                     if isOdd c then
-                        let t = (c + 1) / 2
-                        (Pair(Constant(t - 1), Constant(t)), true)
+                        let t = (c + 1UL) / 2UL
+                        Pair(Constant(t - 1UL), Constant(t))
                     else
-                        let t = c / 2
-                        (Pair(Constant(t), Constant(t)), true)
+                        let t = c / 2UL
+                        Pair(Constant(t), Constant(t))
             | Pair(e1, e2) ->
-                match split e1 with
-                    | (n, true) -> (n, false)
-                    | (n, false) ->
-                        match split e2 with
-                        | (m, true) -> (m, false)
-                        | (m, false) -> (Pair(n, m), false)
-    let (r, _) = split n
+                let r1 = split e1
+                let r2 = split e2
+                Pair(r1, r2)
+                // match split e1 with
+                //     | (n, true) -> (Pair(n, e2), false)
+                //     | (n, false) ->
+                //         match split e2 with
+                //         | (m, true) -> (Pair(e1, m), false)
+                //         | (m, false) -> (Pair(n, m), false)
+    let r = split n
     if foundMatch then Some(r)
     else None
 
 let total elements =
     let rec reduce (n: Element) =
         match n with
-        | Explode(n') ->
-            printfn $"After explode: {n'}"
-            reduce(n')
-        | Split(n') ->
-            printfn $"After split: {n'}"
-            reduce(n')
+        | Explode(m) ->
+            printfn $"After explode: {m}"
+            reduce(m)
+        | Split(m) ->
+            printfn $"After split: {m}"
+            reduce(m)
         | _ -> n
     let add (n1: Element) (n2: Element) =
+        printfn $"  {n1}"
+        printfn $"+ {n2}"
         reduce (Pair (n1, n2))
     Array.reduce add elements
+
+let rec magitude element =
+    match element with
+    | Constant(c) -> c
+    | Pair(e1, e2) -> (3UL * (magitude e1)) + (2UL * (magitude e2))
 
 // --- Part One ---
 
 // Sample data
-
-// let samples = [|
-//     "[[[0,[4,5]],[0,0]],[[[4,5],[2,6]],[9,5]]]";
-//     "[7,[[[3,7],[4,3]],[[6,3],[8,8]]]]";
-//     "[[2,[[0,8],[3,4]]],[[[6,7],1],[7,[1,6]]]]";
-//     "[[[[2,4],7],[6,[0,5]]],[[[6,8],[2,8]],[[2,1],[4,5]]]]";
-//     "[7,[5,[[3,8],[1,4]]]]";
-//     "[[2,[2,2]],[8,[8,1]]]";
-//     "[2,9]";
-//     "[1,[[[9,3],9],[[9,0],[0,7]]]]";
-//     "[[[5,[7,4]],7],1]";
-//     "[[[[4,2],2],6],[8,7]]"; |] |> Array.map (fun s -> parse s)
 
 // printfn "==="
 // let t = parse "[[[[[9,8],1],2],3],4]"
@@ -347,10 +427,49 @@ let total elements =
 
 printfn "==="
 
-let x = parse "[[[[4,3],4],4],[7,[[8,4],9]]]"
-let y = parse "[1,1]"
-let z = total [| x; y |]
-printfn $"{z}"
+// let x = parse "[[[[4,3],4],4],[7,[[8,4],9]]]"
+// let y = parse "[1,1]"
+// let z = total [| x; y |]
+// printfn $"{z}"
+
+let samples = [|
+    "[[[0,[4,5]],[0,0]],[[[4,5],[2,6]],[9,5]]]";
+    "[7,[[[3,7],[4,3]],[[6,3],[8,8]]]]";
+    "[[2,[[0,8],[3,4]]],[[[6,7],1],[7,[1,6]]]]";
+    "[[[[2,4],7],[6,[0,5]]],[[[6,8],[2,8]],[[2,1],[4,5]]]]";
+    "[7,[5,[[3,8],[1,4]]]]";
+    "[[2,[2,2]],[8,[8,1]]]";
+    "[2,9]";
+    "[1,[[[9,3],9],[[9,0],[0,7]]]]";
+    "[[[5,[7,4]],7],1]";
+    "[[[[4,2],2],6],[8,7]]"; |] |> Array.map (fun s -> parse s)
+
+let sum = total samples
+printfn $"{sum}" // [[[[8,7],[7,7]],[[8,6],[7,7]]],[[[0,7],[6,6]],[8,7]]]
+
+let sampleHomework = [|
+    "[[[0,[5,8]],[[1,7],[9,6]]],[[4,[1,2]],[[1,4],2]]]";
+    "[[[5,[2,8]],4],[5,[[9,9],0]]]";
+    "[6,[[[6,2],[5,6]],[[7,6],[4,7]]]]";
+    "[[[6,[0,7]],[0,9]],[4,[9,[9,0]]]]";
+    "[[[7,[6,4]],[3,[1,3]]],[[[5,5],1],9]]";
+    "[[6,[[7,3],[3,2]]],[[[3,8],[5,7]],4]]";
+    "[[[[5,4],[7,7]],8],[[8,3],8]]";
+    "[[9,3],[[9,9],[6,[4,9]]]]";
+    "[[2,[[7,7],7]],[[5,8],[[9,3],[0,2]]]]";
+    "[[[[5,2],5],[8,[3,7]]],[[5,[7,5]],[4,4]]]"; |] |> Array.map parse
+
+let sum' = total sampleHomework
+printfn $"{sum'}"
+let mag = magitude sum'
+printfn $"{mag}" // 4140
+
+let homework = System.IO.File.ReadAllLines "input.txt" |> Array.map parse
+let sum'' = total homework
+printfn $"{sum''}"
+let mag' = magitude sum''
+printfn $"{mag'}" // 4243
+
 
 // [[[[0,7],4],[7,[6,7]]],[1,1]]
 // [[[[0,7],4],[[7,8],[6,0]]],[8,1]]
