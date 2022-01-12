@@ -12,9 +12,9 @@ type Vector3 =
        override this.ToString() = $"<{this.X},{this.Y},{this.Z}>"
     end
 
-type Scanner = { Beacons: Vector3[]; Index: int; } // RotationIndex: int; }
+type Scanner = { Beacons: Vector3[]; Index: int; }
 
-let rotate (v: Vector3) rotationIndex =
+let rotateAxisAligned (v: Vector3) rotationIndex =
     let rotateCoords (v: Vector3) =
         let (x, y, z) = (v.X, v.Y, v.Z)
         match (rotationIndex % 6) with
@@ -37,10 +37,10 @@ let rotate (v: Vector3) rotationIndex =
 
 let scannerRotations (s: Scanner) =
     Array.init 24 (fun rotationIndex ->
-        let rotated = s.Beacons |> Array.map (fun beacon -> rotate beacon rotationIndex)
+        let rotated = s.Beacons |> Array.map (fun beacon -> rotateAxisAligned beacon rotationIndex)
         { Scanner.Beacons = rotated; Index = s.Index; })
 
-let distance (v0: Vector3) (v1: Vector3) =
+let euclidianDistanceSquared (v0: Vector3) (v1: Vector3) =
     let x = (v1.X - v0.X) * (v1.X - v0.X)
     let y = (v1.Y - v0.Y) * (v1.Y - v0.Y)
     let z = (v1.Z - v0.Z) * (v1.Z - v0.Z)
@@ -78,100 +78,29 @@ let loadReport filename =
     System.IO.File.ReadAllLines filename |> Array.toList |> readScanners [] |> Seq.toArray
 
 let locatedScanners (scanners: Scanner[]) locations =
-    //locations |> Map.keys |> Seq.map (fun index -> scanners[index]) |> Seq.toArray
     locations |> Map.toArray |> Array.choose (fun (index, v) -> 
         match v with
         | Some(v) -> Some(scanners[index])
         | None -> None)
 
-
-let dotProduct (v1 : Vector3) (v2 : Vector3) = 
-    (v1.X * v2.X) + (v1.Y * v2.Y) + (v1.Z * v2.Z) |> float
-
-let magnitude (v : Vector3) = 
-    let squaredComponents = (v.X * v.X) + (v.Y * v.Y) + (v.Z * v.Z)
-    sqrt (squaredComponents |> float)
-
-let normalize (v: Vector3) =
-    let m = magnitude v
-    let x = v.X |> float
-    let y = v.Y |> float
-    let z = v.Z |> float
-    (x / m, y / m, z / m)
-
 let matchPoints (locatedScanner: Scanner) (scannerRotated: Scanner) =
-    //let epsilon = 1.0
-    //let mutable results = []
     let mutable distances = Map<int, List<Vector3 * Vector3>> []
     for v1 in locatedScanner.Beacons do
         for v2 in scannerRotated.Beacons do
-            // let dot = dotProduct v1 v2
-            // let m = (magnitude v1) * (magnitude v2)
-            // let radians = acos (dot / m)
-            // let degrees = radians * 180.0 / Math.PI
-
-            // let n1  = normalize v1
-            // let n2  = normalize v2
-            // n1 |> ignore
-            // n2 |> ignore
-
-            // if degrees < epsilon then
-            //     printfn $"\t{v1} -> {v2}"
-            //     results <- (v1,v2) :: results
-
-            let dist = distance v1 v2
-            //distances <- (dist, v1, v2) :: distances
+            let dist = euclidianDistanceSquared v1 v2
             distances <- distances |> Map.change dist (fun v -> 
                 match v with 
                 | Some(lst) -> Some((v1,v2) :: lst)
                 | None -> Some([(v1,v2)]))
-    // let wh =
-    //     distances
-    //         |> Map.toArray 
-    //         |> Array.where (fun (_, pairs) -> pairs.Length >= 12)
-    // if wh.Length >= 1 then 
-    //     printfn $"wh = {wh.Length}"
     let (dist, pairs) =
         distances
         |> Map.toArray 
         |> Array.maxBy (fun (_, pairs) -> pairs |> List.length)
     if pairs.Length >= 12 then
-        // printfn $"===RRR===="
-        // pairs |> List.iter (fun (v0,v1) -> 
-        //     let t = new Vector3(v0.X - v1.X, v0.Y - v1.Y, v0.Z - v1.Z)
-        //     printfn $"{t}")
-        // printfn $"===RRR===="
         let v0 = fst pairs[0]
         let v1 = snd pairs[0]
         Some(scannerRotated, new Vector3(v0.X - v1.X, v0.Y - v1.Y, v0.Z - v1.Z))
     else None
-
-    // let max = distances |> Map.values |> Seq.maxBy (fun v -> v |> List.length)
-    // // printfn $"Max={max}"
-    // if max >= 12 then 
-    //     let dist = distances |> Map.findKey (fun _ v -> v |> List.length)
-    //     dist |> ignore
-    // max >= 12
-    
-    //results
-
-(*
-0: -618,-824,-621
-1: 686,422,578
-+ 68 -402 -43
-
-0: -618,-824,-621
-1: 686,422,578
-- -1304 -402 -1199
-*)
-    // let pairs = Array.zip locatedScanner.Beacons scanner.Beacons
-    // pairs |> Array.filter (fun (v1, v2) ->
-    //     let dot = dotProduct v1 v2
-    //     let m = (magnitude v1) * (magnitude v2)
-    //     let angle = acos (dot / m)
-    //     angle = 0.)
-
-// --- Part One ---
 
 let doIt scanners =
     scanners |> Array.iteri (fun i (scanner: Scanner) ->
@@ -209,16 +138,8 @@ let doIt scanners =
                 scanners[scanner.Index] <- scannerRotated//{ Scanner.Beacons = rotation; Index = scanner.Index; }
                 locations <- updateLocations locations scanner.Index absPos
                 None
-                // rotation.Beacons |> Array.iter (fun b ->
-                //     printfn $"{b}")
             | None -> Some(scanner))
 
-            // let matching = rotations |> Array.findIndex (fun rotation ->
-            //     let x = locatedScanners |> Seq.tryFind (fun locatedScanner -> 
-            //         let overlappingPoints = matchPoints locatedScanner scanner
-            //         overlappingPoints |> Array.length > 12)
-            //     )
-            // printfn $"Scanner {i+1} matches scanner {matching}"))
     let allPoints = 
         scanners
         |> Array.map (fun scanner -> 
@@ -228,13 +149,15 @@ let doIt scanners =
         |> Array.collect id
     (locations |> Map.values |> Seq.choose id, allPoints |> Array.distinct)
 
+// --- Part One ---
+
 let (scanners1, a) = loadReport "sample.txt" |> doIt
 let (scanners2, b) = loadReport "input.txt" |> doIt
 
 printfn $"{a.Length}"
 printfn $"{b.Length}"
 
-// PART 2
+// --- Part Two ---
 
 let greatestDistance locations = 
     let mutable greatest = -1
@@ -247,14 +170,3 @@ let greatestDistance locations =
 
 printfn $"{greatestDistance scanners1}"
 printfn $"{greatestDistance scanners2}"
-
-//b |> Array.sort |> Array.iter (fun point -> printfn $"{point}")
-//allPoints |> Array.sort |> Array.iter (fun p -> printfn $"{p}")
-
-// let points = loadReport "sample.txt"
-//             |> Array.collect (fun scanner ->
-//                 let p = locations[scanner.Index].Value
-//                 scanner.Beacons |> Array.map (fun b -> new Vector3(b.X + p.X, b.Y + p.Y, b.Z + p.Z)))
-//             |> Array.distinct
-// points |> Array.sort |> Array.iter (fun p -> printfn $"{p}")
-// printfn $"!!{points.Length}"
