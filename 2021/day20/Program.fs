@@ -2,6 +2,11 @@
 
 // --- Day 20: Trench Map ---
 
+// The puzzle input really tripped me up. The sea of infinite unlit pixels go to lit 
+// (because the first index in lookup table flips unlit to lit).
+// The key here is to "pre-expand" the image enough so that we can properly simulate
+// lighting/unlighting an infinite set of pixels.
+
 let (|One|Zero|) input = if input = '#' then One else Zero
 
 let lookupBit (bitTable: bool[]) index = bitTable[index]
@@ -58,42 +63,40 @@ let countLitPixels (image: bool[,]) =
             if image[i,j] then sum <- sum + 1
     sum
 
-let enhanceImage lookup inputImage =
-    //let inputImage = expandImage inputImage
-    let len1 = inputImage |> Array2D.length1
-    let len2 = inputImage |> Array2D.length2
-    let outputImage = Array2D.zeroCreate len1 len2
-    for i = 0 to len1 - 1 do
-        for j = 0 to len2 - 1 do
-            let index = inputImage |> kernel i j |> bitsToDecimal
-            outputImage[i,j] <- lookup index
-    outputImage
-
-let enhanceImageBy lookup inputImage times =
-    { 1 .. times } |> Seq.fold (fun image _ -> enhanceImage lookup image) (expandImage (2*times) inputImage)
+let enhanceImage lookup inputImage times =
+    let enhanceOne lookup inputImage =
+        let len1 = inputImage |> Array2D.length1
+        let len2 = inputImage |> Array2D.length2
+        let outputImage = Array2D.zeroCreate len1 len2
+        for i = 0 to len1 - 1 do
+            for j = 0 to len2 - 1 do
+                let index = inputImage |> kernel i j |> bitsToDecimal
+                outputImage[i,j] <- lookup index
+        outputImage
+    { 1 .. times } |> Seq.fold (fun image _ -> enhanceOne lookup image) (expandImage (2*times) inputImage)
 
 // --- Part One ---
 
 let sampleLookup, sampleInputImage = readInput "sample.txt"
-let sampleResult = enhanceImageBy sampleLookup sampleInputImage 2
+let sampleResult = enhanceImage sampleLookup sampleInputImage 2
 printImage sampleResult
 printfn $"{countLitPixels sampleResult}" // 35
 
 printfn "==="
 
 let lookup, inputImage = readInput "input.txt"
-let result = enhanceImageBy lookup inputImage 2
+let result = enhanceImage lookup inputImage 2
 printImage result
 printfn $"{countLitPixels result}" // 5682
 
 // --- Part Two ---
 
-let sampleResult' = enhanceImageBy sampleLookup sampleInputImage 50
+let sampleResult' = enhanceImage sampleLookup sampleInputImage 50
 printImage sampleResult'
 printfn $"{countLitPixels sampleResult'}" // 3351
 
 printfn "==="
 
-let result' = enhanceImageBy lookup inputImage 50
+let result' = enhanceImage lookup inputImage 50
 printImage result'
 printfn $"{countLitPixels result'}" // 17628
