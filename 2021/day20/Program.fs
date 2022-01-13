@@ -1,5 +1,4 @@
 ﻿// https://adventofcode.com/2021/day/20
-open System
 
 // --- Day 20: Trench Map ---
 
@@ -19,11 +18,11 @@ let readInput filename =
     let inputImage = lines |> Array.skip 2 |> Array.map mapRow |> array2D
     (lookupBit bitTable, inputImage)
 
-let expandImage (image: bool[,]) =
+let expandImage count (image: bool[,]) =
     let len1 = image |> Array2D.length1
     let len2 = image |> Array2D.length2
-    let arr = Array2D.zeroCreate (len1 + 2) (len2 + 2)
-    Array2D.blit image 0 0 arr 1 1 len1 len2
+    let arr = Array2D.zeroCreate (len1 + count) (len2 + count)
+    Array2D.blit image 0 0 arr (count/2) (count/2) len1 len2
     arr
 
 let printImage (image: bool[,]) =
@@ -38,19 +37,17 @@ let bitsToDecimal (bits: bool[]) =
 let kernel i j (image: bool[,]) = 
     let maxI = (image |> Array2D.length1) - 1
     let maxJ = (image |> Array2D.length2) - 1
-    let inline fetch i j = 
-        if i < 0 || j < 0 || i > maxI || j > maxJ then false
+    let rec fetch i j = 
+        if i < 0 then fetch 0 j
+        elif i > maxI then fetch maxI j
+        elif j < 0 then fetch i 0
+        elif j > maxJ then fetch i maxJ
         else image[i,j]
     [| 
         fetch (i-1) (j-1); fetch (i-1) j; fetch (i-1) (j+1);
         fetch     i (j-1); fetch     i j; fetch     i (j+1);
         fetch (i+1) (j-1); fetch (i+1) j; fetch (i+1) (j+1);
     |]
-    // [| 
-    //     image[i-1, j-1]; image[i-1, j]; image[i-1, j+1];
-    //     image[i,   j-1]; image[i,   j]; image[i,   j+1];
-    //     image[i+1, j-1]; image[i+1, j]; image[i+1, j+1];
-    // |]
 
 let countLitPixels (image: bool[,]) =
     let len1 = image |> Array2D.length1
@@ -62,7 +59,7 @@ let countLitPixels (image: bool[,]) =
     sum
 
 let enhanceImage lookup inputImage =
-    let inputImage = expandImage inputImage
+    //let inputImage = expandImage inputImage
     let len1 = inputImage |> Array2D.length1
     let len2 = inputImage |> Array2D.length2
     let outputImage = Array2D.zeroCreate len1 len2
@@ -73,11 +70,7 @@ let enhanceImage lookup inputImage =
     outputImage
 
 let enhanceImageBy lookup inputImage times =
-    { 1 .. times } |> Seq.fold (fun image _ -> enhanceImage lookup image ) inputImage
-    // let rec loop image times =
-    //     if times = 0 then image
-    //     else loop (enhanceImage lookup image) (times - 1)
-    // loop inputImage times
+    { 1 .. times } |> Seq.fold (fun image _ -> enhanceImage lookup image) (expandImage (2*times) inputImage)
 
 // --- Part One ---
 
@@ -91,23 +84,16 @@ printfn "==="
 let lookup, inputImage = readInput "input.txt"
 let result = enhanceImageBy lookup inputImage 2
 printImage result
-printfn $"{countLitPixels result}" // 6196, 5776, 5552, 6532
-
-// printImage sampleInputImage
-// printfn "---"
-// let sampleInputImage' = enhanceImage sampleLookup sampleInputImage
-// printImage sampleInputImage'
-// printfn $"{countLitPixels sampleInputImage'}"
-// printfn "---"
-// let sampleInputImage'' = enhanceImage sampleLookup sampleInputImage'
-// printImage sampleInputImage''
-// printfn $"{countLitPixels sampleInputImage''}"
-
-// printfn $"{bitsToDecimal [|false|] }"
-// printfn $"{bitsToDecimal [|true|] }"
-// printfn $"{bitsToDecimal [|true;false;|] }"
-// printfn $"{bitsToDecimal [|true;true;|] }"
-// printfn $"{bitsToDecimal [|true;true;true;true|] }"
-// //printfn $"{bitsToDecimal [|1;1;1;1;1;1;1;1;1;|] }"
+printfn $"{countLitPixels result}" // 5682
 
 // --- Part Two ---
+
+let sampleResult' = enhanceImageBy sampleLookup sampleInputImage 50
+printImage sampleResult'
+printfn $"{countLitPixels sampleResult'}" // 3351
+
+printfn "==="
+
+let result' = enhanceImageBy lookup inputImage 50
+printImage result'
+printfn $"{countLitPixels result'}" // 17628
