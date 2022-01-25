@@ -89,53 +89,46 @@ let isInRange range step =
 
 let range = { Rx = (-50, 50); Ry = (-50, 50); Rz = (-50, 50); }
 
-// let sampleOn =
-//     [| "on x=10..12,y=10..12,z=10..12";
-//        "on x=11..13,y=11..13,z=11..13";
-//        "off x=9..11,y=9..11,z=9..11";
-//        "on x=10..10,y=10..10,z=10..10"; |]
-//     |> Array.map parseRebootCommand
-//     |> reboot (isInRange range)
-//     |> Set.count
-// printfn $"{sampleOn}" // 39
+let partOne () =
+    let sampleOn =
+        [| "on x=10..12,y=10..12,z=10..12";
+        "on x=11..13,y=11..13,z=11..13";
+        "off x=9..11,y=9..11,z=9..11";
+        "on x=10..10,y=10..10,z=10..10"; |]
+        |> Array.map parseRebootStep
+        |> reboot (isInRange range)
+        |> Set.count
+    printfn $"{sampleOn}" // 39
 
-// let sampleOn' = 
-//     System.IO.File.ReadAllLines "sample.txt"
-//     |> Array.map parseRebootCommand
-//     |> reboot (isInRange range)
-//     |> Set.count 
-// printfn $"{sampleOn'}" // 590784
+    let sampleOn' = 
+        System.IO.File.ReadAllLines "sample.txt"
+        |> Array.map parseRebootStep
+        |> reboot (isInRange range)
+        |> Set.count 
+    printfn $"{sampleOn'}" // 590784
 
-// let puzzleOn' = command
-//     System.IO.File.ReadAllLines "input.txt"
-//     |> Array.map parseRebootCommand
-//     |> reboot (isInRange range)
-//     |> Set.count 
-// printfn $"{puzzleOn'}" // 587785
+    let puzzleOn' = 
+        System.IO.File.ReadAllLines "input.txt"
+        |> Array.map parseRebootStep
+        |> reboot (isInRange range)
+        |> Set.count 
+    printfn $"{puzzleOn'}" // 587785
+
+//partOne
 
 // --- Part Two ---
 
-// let reduceSteps (steps: RebootStep[]) =
-//     let rec reduce steps =
-//         let isSubstep step = steps |> Array.tryFind (fun s -> isInRange s.Bounds step)
-//         let steps' = Array.choose (fun step -> isSubstep step) steps
-//         if (steps.Length <> steps'.Length) then reduce steps'
-//         else steps'
-//     reduce steps
-
 (*
-Here's another one that threw me. My approach was good for part 1, but 
-fell flat in part 2 due to the number of elements being considered.
+Here's another one that threw me. My approach was good for part 1, but fell flat in part 2 due to the number of elements being considered.
+I took some time off from this, because life. Let's try it again now.
 
 Revised approach:
-read input
-map each to command
-partition into on and off cuboid sets
-foreach off cuboid
-    find all on cuboids that overlap with the off cuboid
-    for each on cuboid that overlaps
-        replace the on cuboid with the set of sub-cubiods that don't overlap
-answer <- count elements in remaining set of on cuboids
+read input; map each line of input to a command
+partition into "on" and "off" cuboid sets
+countOn <- compute sum of all "on" cuboids
+foreach off cuboid, off
+    countOn <- countOn - (overlap(off allOn) + overlap(off allOff)
+    allOff <- allOff :: off
 *)
 
 let computeSize cubiod = 
@@ -146,30 +139,50 @@ let computeSize cubiod =
     let (z, z') = cubiod.Rz
     (distance x x') * (distance y y') * (distance z z')
 
-let sampleSteps = 
-    System.IO.File.ReadAllLines "sample2.txt"
+let partition steps = 
+  steps |> Array.partition (fun step -> step.State = State.On)
+
+// Computes the number of points the two steps overlap
+let overlap (step: RebootStep) (steps: seq<RebootStep>) =
+    let intersection (n1, n1') (n2, n2') =
+        if (n1 <= n2 && n1' >= n2') ||
+           (n2 <= n1 && n2' >= n1') ||
+           (n1 <= n2 && n1' >= n2) ||
+           (n1 <= n2' && n1' >= n2') then 
+            Some(max n1 n2, min n1' n2')
+        else 
+            assert ((n1 < n2 && n1' < n2') || (n1 > n2 && n1' > n2'))
+            None
+    let bounds1 = step.Bounds
+    steps |> Seq.sumBy (fun step2 -> 
+        let bounds2 = step2.Bounds
+        match intersection bounds1.Rx bounds2.Rx with
+        | Some(x, x') -> 
+            match intersection bounds1.Ry bounds2.Ry with
+            | Some(y, y') -> 
+                match intersection bounds1.Rz bounds2.Rz with
+                | Some(z, z') -> computeSize { Rx = (x, x'); Ry = (y, y'); Rz = (z, z'); } 
+                | None -> 0UL
+            | None -> 0UL
+        | None -> 0UL)
+
+let reboot2 steps = 
+    // partition into on and off cuboid sets
+    let onSteps, offSteps = partition steps
+
+    // compute sum of all "on" cuboids
+    let initialOnCount = onSteps |> Array.sumBy (fun step -> computeSize step.Bounds)
+
+    let (finalOnCount, _) =
+        offSteps |> Array.fold (fun (onCount, offSteps) offStep -> 
+            (onCount - (overlap offStep onSteps) + (overlap offStep offSteps), (offStep :: offSteps))) (initialOnCount, List.empty)
+    finalOnCount
+
+let sampleOn = 
+    System.IO.File.ReadAllLines "sample.txt"
     |> Array.map parseRebootStep
+    |> reboot2
 
-// partition into on and off cuboid sets
-let onSteps, offSteps = 
-    sampleSteps |> Array.partition (fun step -> step.State = State.On)
-
-(*
-foreach off cuboid
-    find all on cuboids that overlap with the off cuboid
-    for each on cuboid that overlaps
-        replace the on cuboid with the set of sub-cubiods that don't overlap
-answer <- count elements in remaining set of on cuboids
-*)
-
-// let sample2On = 
-//     System.IO.File.ReadAllLines "sample2.txt"
-//     |> Array.map parseRebootCommand
-
-// sample2On |> printSteps
-// printfn "==="
-// printfn $"{sample2On.Length}"
-// let sample2On' = reduceSteps sample2On
-// printfn $"{sample2On'.Length}"
-
-//printfn $"{sample2On}" // 
+printfn "%i" sampleOn
+//t: 2758514936282235
+//1: 2441245014278670
