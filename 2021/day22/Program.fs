@@ -139,11 +139,36 @@ let computeSize cubiod =
     let (z, z') = cubiod.Rz
     (distance x x') * (distance y y') * (distance z z')
 
-let partition steps = 
-  steps |> Array.partition (fun step -> step.State = State.On)
+let computeSize2 cubiod offBounds = 
+    let hitTest (a,b,c) =
+        let result = offBounds |> Array.tryFind (fun cubiod ->
+            let (x, x') = cubiod.Rx
+            let (y, y') = cubiod.Ry
+            let (z, z') = cubiod.Rz
+            a >= x && a <= x' &&
+            b >= y && b <= y' &&
+            c >= z && c <= z')
+        match result with
+        | None -> 1UL
+        | Some(_) -> 0UL
+    let mutable sum = 0UL
+    let (x, x') = cubiod.Rx
+    let (y, y') = cubiod.Ry
+    let (z, z') = cubiod.Rz
+    for a in x .. x' do
+        for b in y .. y' do
+            for c in z .. z' do
+                sum <- sum + hitTest (a,b,c)
+    printfn "cube is: %i" sum
+    sum
 
-// Computes the number of points the two steps overlap
-let overlap (step: RebootStep) (steps: seq<RebootStep>) =
+let partition steps = 
+  let onSteps, offSteps = steps |> Array.partition (fun step -> step.State = State.On)
+  let onBounds = onSteps |> Array.map (fun step -> step.Bounds)
+  let offBounds = offSteps |> Array.map (fun step -> step.Bounds)
+  (onBounds, offBounds)
+
+let rec getOverlaps (onBounds: Cuboid) (offBounds: Cuboid[]) = 
     let intersection (n1, n1') (n2, n2') =
         if (n1 <= n2 && n1' >= n2') ||
            (n2 <= n1 && n2' >= n1') ||
@@ -153,36 +178,95 @@ let overlap (step: RebootStep) (steps: seq<RebootStep>) =
         else 
             assert ((n1 < n2 && n1' < n2') || (n1 > n2 && n1' > n2'))
             None
-    let bounds1 = step.Bounds
-    steps |> Seq.sumBy (fun step2 -> 
-        let bounds2 = step2.Bounds
-        match intersection bounds1.Rx bounds2.Rx with
+    let overlaps = offBounds |> Array.choose (fun off -> 
+        match intersection onBounds.Rx off.Rx with
         | Some(x, x') -> 
-            match intersection bounds1.Ry bounds2.Ry with
+            match intersection onBounds.Ry off.Ry with
             | Some(y, y') -> 
-                match intersection bounds1.Rz bounds2.Rz with
-                | Some(z, z') -> computeSize { Rx = (x, x'); Ry = (y, y'); Rz = (z, z'); } 
-                | None -> 0UL
-            | None -> 0UL
-        | None -> 0UL)
+                match intersection onBounds.Rz off.Rz with
+                | Some(z, z') -> Some({ Rx = (x, x'); Ry = (y, y'); Rz = (z, z'); })
+                | None -> None
+            | None -> None
+        | None -> None)
+    Array.append [|onBounds|] overlaps
+
+// Computes the sequence of bounds of which the given step overlaps with the given sequence of steps
+let rec computeOverlaps (onBounds: Cuboid) (offBounds: Cuboid[]) =
+    let intersection (n1, n1') (n2, n2') =
+        if (n1 <= n2 && n1' >= n2') ||
+           (n2 <= n1 && n2' >= n1') ||
+           (n1 <= n2 && n1' >= n2) ||
+           (n1 <= n2' && n1' >= n2') then 
+            Some(max n1 n2, min n1' n2')
+        else 
+            assert ((n1 < n2 && n1' < n2') || (n1 > n2 && n1' > n2'))
+            None
+    let overlaps = offBounds |> Array.choose (fun off -> 
+        match intersection onBounds.Rx off.Rx with
+        | Some(x, x') -> 
+            match intersection onBounds.Ry off.Ry with
+            | Some(y, y') -> 
+                match intersection onBounds.Rz off.Rz with
+                | Some(z, z') -> Some({ Rx = (x, x'); Ry = (y, y'); Rz = (z, z'); })
+                | None -> None
+            | None -> None
+        | None -> None)
+    if overlaps.Length > 0 then
+        printfn "%A has %i overlaps. They are:" onBounds overlaps.Length
+        overlaps |> Array.iter (fun t -> printfn "\t%A" t)
+
+    if overlaps.Length = 0 then computeSize onBounds
+    //elif overlaps.Length = 1 then (computeSize onBounds) - (computeSize overlaps[0])
+    else 
+        let mutable overlappedSum = 0UL
+        for i in 0 .. overlaps.Length - 1 do
+            let temp = overlaps[i]
+            let remaining = overlaps |> Array.removeAt i
+            overlappedSum <- overlappedSum + (computeOverlaps temp remaining) 
+        computeSize onBounds - overlappedSum
+
+        // (computeSize onBounds) -
+        // (overlaps
+        //     |> Array.mapi (fun i overlap ->
+        //         let overlaps' = overlaps |> Array.removeAt i
+        //         computeOverlaps overlap overlaps')
+        //     |> Array.sum)
+    //(computeSize bounds) - (overlaps |> Array.sumBy computeSize)
+    // let a = (computeSize onBounds) 
+    // let b = (overlaps |> Array.sumBy computeSize)
+    // printfn "a=%i b=%i" a b
+    // a - b
 
 let reboot2 steps = 
-    // partition into on and off cuboid sets
-    let onSteps, offSteps = partition steps
+    // partition into on and off cuboid arrays
+    let onBounds, offBounds = partition steps
+    onBounds |> Array.sumBy (fun bounds -> computeSize bounds - (computeOverlaps bounds offBounds))
+    //printfn "there are %i cubes; %i overlaps" onBounds.Length overlaps.Length
+    //let sums = onBounds |> Array.Parallel.map (fun bounds -> computeSize2 bounds overlaps)
+    //sums |> Array.sum
+    //42
 
     // compute sum of all "on" cuboids
-    let initialOnCount = onSteps |> Array.sumBy (fun step -> computeSize step.Bounds)
+    // let (onCount, _) =
+    //     onSteps |> Array.fold (fun (onCount, onSteps) onStep -> 
+    //         (onCount + (computeSize onStep.Bounds) - (overlap onStep onSteps), (onStep :: onSteps))) (0UL, List.empty)
 
-    let (finalOnCount, _) =
-        offSteps |> Array.fold (fun (onCount, offSteps) offStep -> 
-            (onCount - (overlap offStep onSteps) + (overlap offStep offSteps), (offStep :: offSteps))) (initialOnCount, List.empty)
-    finalOnCount
+    // //let initialOnCount = onSteps |> Array.sumBy (fun step -> computeSize step.Bounds)
+
+    // let (offCount, _) =
+    //     offSteps |> Array.fold (fun (offCount, offSteps) offStep -> 
+    //         (offCount + (overlap offStep onSteps) - (overlap offStep offSteps), (offStep :: offSteps))) (0UL, List.empty)
+
+    // printfn "%i" onCount
+    // printfn "%i" offCount
+    // onCount - offCount
 
 let sampleOn = 
-    System.IO.File.ReadAllLines "sample.txt"
+    System.IO.File.ReadAllLines "sample2.txt"
     |> Array.map parseRebootStep
     |> reboot2
 
 printfn "%i" sampleOn
 //t: 2758514936282235
 //1: 2441245014278670
+//2: 2276695655522924
