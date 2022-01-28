@@ -168,7 +168,7 @@ let partition steps =
   let offBounds = offSteps |> Array.map (fun step -> step.Bounds)
   (onBounds, offBounds)
 
-let rec getOverlaps (onBounds: Cuboid) (offBounds: Cuboid[]) = 
+let rec split (onBounds: Cuboid) (offBounds: Cuboid[]) = 
     let intersection (n1, n1') (n2, n2') =
         if (n1 <= n2 && n1' >= n2') ||
            (n2 <= n1 && n2' >= n1') ||
@@ -188,7 +188,57 @@ let rec getOverlaps (onBounds: Cuboid) (offBounds: Cuboid[]) =
                 | None -> None
             | None -> None
         | None -> None)
-    Array.append [|onBounds|] overlaps
+
+    let (x, x') = onBounds.Rx
+    let (y, y') = onBounds.Ry
+    let (z, z') = onBounds.Rz
+    overlaps |> Array.map (fun overlap ->  
+        let (ox, ox') = overlap.Rx
+        let (oy, oy') = overlap.Ry
+        let (oz, oz') = overlap.Rz
+        [|
+            // top
+
+            { Rx = (x, ox); Ry = (oy', y'); Rz = (oz', z'); };
+            { Rx = (ox, ox'); Ry = (oy', y'); Rz = (oz', z'); };
+            { Rx = (ox', x'); Ry = (oy', y'); Rz = (oz', z'); };
+
+            { Rx = (x, ox); Ry = (oy', y'); Rz = (oz, oz'); };            
+            { Rx = (ox', x'); Ry = (oy', y'); Rz = (oz, oz'); };
+
+            { Rx = (x, ox); Ry = (oy', y'); Rz = (z, oz); };
+            { Rx = (ox, ox'); Ry = (oy', y'); Rz = (z, oz); };
+            { Rx = (ox', x'); Ry = (oy', y'); Rz = (z, oz); };
+
+            // middle 
+
+            { Rx = (x, ox); Ry = (oy, oy'); Rz = (oz', z'); };
+            { Rx = (ox, ox'); Ry = (oy, oy'); Rz = (oz', z'); };
+            { Rx = (ox', x'); Ry = (oy, oy'); Rz = (oz', z'); };
+
+            { Rx = (x, ox); Ry = (oy, oy'); Rz = (oz, oz'); };            
+            { Rx = (ox', x'); Ry = (oy, oy'); Rz = (oz, oz'); };
+
+            { Rx = (x, ox); Ry = (oy, oy'); Rz = (z, oz); };
+            { Rx = (ox, ox'); Ry = (oy, oy'); Rz = (z, oz); };
+            { Rx = (ox', x'); Ry = (oy, oy'); Rz = (z, oz); };
+
+            // bottom
+
+            { Rx = (x, ox); Ry = (y, oy); Rz = (oz', z'); };
+            { Rx = (ox, ox'); Ry = (y, oy); Rz = (oz', z'); };
+            { Rx = (ox', x'); Ry = (y, oy); Rz = (oz', z'); };
+
+            { Rx = (x, ox); Ry = (y, oy); Rz = (oz, oz'); };            
+            { Rx = (ox', x'); Ry = (y, oy); Rz = (oz, oz'); };
+
+            { Rx = (x, ox); Ry = (y, oy); Rz = (z, oz); };
+            { Rx = (ox, ox'); Ry = (y, oy); Rz = (z, oz); };
+            { Rx = (ox', x'); Ry = (y, oy); Rz = (z, oz); };
+        |]
+        )
+        |> Array.collect id
+        |> Array.where (fun cuboid -> computeSize cuboid > 0UL)
 
 // Computes the sequence of bounds of which the given step overlaps with the given sequence of steps
 let rec computeOverlaps (onBounds: Cuboid) (offBounds: Cuboid[]) =
@@ -211,9 +261,9 @@ let rec computeOverlaps (onBounds: Cuboid) (offBounds: Cuboid[]) =
                 | None -> None
             | None -> None
         | None -> None)
-    if overlaps.Length > 0 then
-        printfn "%A has %i overlaps. They are:" onBounds overlaps.Length
-        overlaps |> Array.iter (fun t -> printfn "\t%A" t)
+    // if overlaps.Length > 0 then
+    //     printfn "%A has %i overlaps. They are:" onBounds overlaps.Length
+    //     overlaps |> Array.iter (fun t -> printfn "\t%A" t)
 
     if overlaps.Length = 0 then computeSize onBounds
     //elif overlaps.Length = 1 then (computeSize onBounds) - (computeSize overlaps[0])
@@ -238,9 +288,39 @@ let rec computeOverlaps (onBounds: Cuboid) (offBounds: Cuboid[]) =
     // a - b
 
 let reboot2 steps = 
+    
+    let steps' = 
+        steps |> Array.mapi (fun i step ->
+            let temp = steps[i].Bounds
+            let remaining = steps |> Array.removeAt i |> Array.map (fun step -> step.Bounds)
+            split temp remaining)
+              |> Array.mapi (fun i arr -> 
+                Array.create arr.Length (fun j ->
+                    { State = steps[i].State; Bounds = arr[j]; } ))
+              |> Array.collect id
+
     // partition into on and off cuboid arrays
-    let onBounds, offBounds = partition steps
-    onBounds |> Array.sumBy (fun bounds -> computeSize bounds - (computeOverlaps bounds offBounds))
+    let onBounds, offBounds = partition steps'
+
+    // let onBounds = 
+    //     onBounds |> Array.mapi (fun i _ ->
+    //         let temp = onBounds[i]
+    //         let remaining = onBounds |> Array.removeAt i
+    //         split temp remaining)
+    //             |> Array.collect id
+
+    // let offBounds =
+    //     offBounds |> Array.mapi (fun i _ ->
+    //         let temp = offBounds[i]
+    //         let remaining = offBounds |> Array.removeAt i
+    //         split temp remaining)
+    //     |> Array.collect id
+
+    let sums = onBounds |> Array.Parallel.map (fun bounds -> computeSize bounds - (computeOverlaps bounds offBounds))
+    sums |> Array.sum
+    // let tempSum = onBounds |> Array.sumBy computeSize
+    // printfn "%i" (tempSum - sum)
+    
     //printfn "there are %i cubes; %i overlaps" onBounds.Length overlaps.Length
     //let sums = onBounds |> Array.Parallel.map (fun bounds -> computeSize2 bounds overlaps)
     //sums |> Array.sum
