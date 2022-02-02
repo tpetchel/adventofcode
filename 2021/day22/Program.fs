@@ -89,38 +89,35 @@ let isInRange range step =
 
 let range = { Rx = (-50, 50); Ry = (-50, 50); Rz = (-50, 50); }
 
-let partOne () =
-    let sampleOn =
-        [| "on x=10..12,y=10..12,z=10..12";
-        "on x=11..13,y=11..13,z=11..13";
-        "off x=9..11,y=9..11,z=9..11";
-        "on x=10..10,y=10..10,z=10..10"; |]
-        |> Array.map parseRebootStep
-        |> reboot (isInRange range)
-        |> Set.count
-    printfn $"{sampleOn}" // 39
+let sampleOn =
+    [| "on x=10..12,y=10..12,z=10..12";
+    "on x=11..13,y=11..13,z=11..13";
+    "off x=9..11,y=9..11,z=9..11";
+    "on x=10..10,y=10..10,z=10..10"; |]
+    |> Array.map parseRebootStep
+    |> reboot (isInRange range)
+    |> Set.count
+printfn $"{sampleOn}" // 39
 
-    let sampleOn' = 
-        System.IO.File.ReadAllLines "sample.txt"
-        |> Array.map parseRebootStep
-        |> reboot (isInRange range)
-        |> Set.count 
-    printfn $"{sampleOn'}" // 590784
+let sampleOn' = 
+    System.IO.File.ReadAllLines "sample.txt"
+    |> Array.map parseRebootStep
+    |> reboot (isInRange range)
+    |> Set.count 
+printfn $"{sampleOn'}" // 590784
 
-    let puzzleOn' = 
-        System.IO.File.ReadAllLines "input.txt"
-        |> Array.map parseRebootStep
-        |> reboot (isInRange range)
-        |> Set.count 
-    printfn $"{puzzleOn'}" // 587785
-
-//partOne ()
+let puzzleOn' = 
+    System.IO.File.ReadAllLines "input.txt"
+    |> Array.map parseRebootStep
+    |> reboot (isInRange range)
+    |> Set.count 
+printfn $"{puzzleOn'}" // 587785
 
 // --- Part Two ---
 
 // I really struggled with this one. I put it aside for some time,
 // but still couldn't get it after a break. 
-// This is the second one I needed a hint from (on Reddit.)
+// This is the second one where I needed a hint (on Reddit.)
 // It takes a posted imperative approach and adapts it to a 
 // (somewhat) more functional style.
 
@@ -149,38 +146,35 @@ let getOverlap (a: Cuboid) (b: Cuboid) =
     { Rx = (x,x'); Ry = (y,y'); Rz = (z,z'); }
 
 let reboot2 (steps: RebootStep[]) = 
-    let rec calculateCubesToIndex (steps: RebootStep[]) (step: RebootStep) fromIndex =
-        if fromIndex >= steps.Length then 0L
-        else
-            let size = computeSize step.Bounds
-            if size = 0L then 0L
-            else
-                // If set on, add to count, if off, start with count of 0.
-                let mutable count = match step.State with
-                                    | State.On -> size
-                                    | State.Off -> 0L
-                                    | _ -> failwith "Invalid state"
-                let mutable i = 0
-                while i < fromIndex do
-                    let cube2 = steps[i]
-                    let overlapBounds = getOverlap step.Bounds cube2.Bounds
-                    let overlapStep = { State = cube2.State; Bounds = overlapBounds; }
-                    count <- count - calculateCubesToIndex steps overlapStep i
-                    i <- i + 1
-                count
+    let rec calculateCubesToIndex (steps: RebootStep[]) (step: RebootStep) (previousSteps: RebootStep[]) =
+        let size = computeSize step.Bounds
+        match size with 
+        | 0L -> 0L
+        | _ ->
+            let count = 
+                previousSteps 
+                |> Array.mapi (fun i previousStep ->
+                    let overlapBounds = getOverlap step.Bounds previousStep.Bounds
+                    let overlapStep = { State = previousStep.State; Bounds = overlapBounds; }
+                    calculateCubesToIndex steps overlapStep (Array.take i previousSteps))
+                |> Array.sum
+            match step.State with
+                | State.On -> size - count
+                | State.Off -> 0L - count
+                | _ -> failwith "Invalid state"
 
     // For some reason, folks talk about adding one to the second component of each 
     // cuboid. I don't yet fully understand why, but it works. ;)
     let steps' = steps |> Array.map (fun step ->
-        let (x, x') = step.Bounds.Rx
-        let (y, y') = step.Bounds.Ry
-        let (z, z') = step.Bounds.Rz 
-        { State = step.State; Bounds = { Rx = (x,x'+1); Ry = (y,y'+1); Rz = (z,z'+1); } })
+         let (x, x') = step.Bounds.Rx
+         let (y, y') = step.Bounds.Ry
+         let (z, z') = step.Bounds.Rz 
+         { State = step.State; Bounds = { Rx = (x, x'+1); Ry = (y, y'+1); Rz = (z, z'+1); } })
 
     // Compute the size of each 'on' cuboid and return the sum.
     steps' 
-    |> Array.mapi (fun i step -> calculateCubesToIndex steps' step i)
-    |> Array.sum
+        |> Array.mapi (fun i step -> calculateCubesToIndex steps' step (Array.take i steps'))
+        |> Array.sum
 
 // Sample data
 let sampleCount = 
