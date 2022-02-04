@@ -10,8 +10,6 @@ type Type =
 
 type State =
     | WaitingToLeave = 0
-    | MovingLeft = 1
-    | MovingRight = 2
     | WaitingToFinish = 3
     | Finished = 4
 
@@ -68,7 +66,7 @@ let getAmphipods (grid: Option<Amphipod>[,]) =
             for col in 0 .. (cols - 1) do
                 match grid[row,col] with
                 | None -> ()
-                | Some(a) -> yield a
+                | Some(a) -> yield (a, row, col)
     } |> Seq.toArray
 
 let enumerateMoves (fromRow: int) (fromCol: int) (amphipod: Amphipod) (grid: Option<Amphipod>[,]) totalCost =
@@ -107,6 +105,7 @@ let enumerateMoves (fromRow: int) (fromCol: int) (amphipod: Amphipod) (grid: Opt
         // compute cost to move
         let cost = ((dist fromRow toRow) * amphipod'.Cost) + 
                    ((dist fromCol toCol) * amphipod'.Cost)
+        
         //printf "After:"
         //printGrid grid' (totalCost + cost)
 
@@ -114,27 +113,10 @@ let enumerateMoves (fromRow: int) (fromCol: int) (amphipod: Amphipod) (grid: Opt
 
         (grid', totalCost + cost)
     let tryToLeave () = 
+        //if toCol > 10 || toCol < 0 || toCol = 2 || toCol = 4 || toCol = 6 || toCol = 8 then false
         seq {
-            if canMoveTo 0 (fromCol - 1) then yield moveTo 0 (fromCol - 1) State.MovingLeft
-            if canMoveTo 0 (fromCol + 1) then yield moveTo 0 (fromCol + 1) State.MovingRight
-        }
-    let tryMoveLeft () = 
-        seq {
-            if canMoveTo 0 (fromCol - 1) then 
-                if (fromCol - 1) = 0 then
-                    yield moveTo 0 (fromCol - 1) State.WaitingToFinish
-                else
-                    yield moveTo 0 (fromCol - 1) State.MovingLeft
-            else yield moveTo 0 fromCol State.WaitingToFinish
-        }
-    let tryMoveRight () = 
-        seq {
-            if canMoveTo 0 (fromCol + 1) then
-                if (fromCol + 1) = 10 then //(grid |> Array2D.length2)
-                    yield moveTo 0 (fromCol + 1) State.WaitingToFinish
-                else
-                    yield moveTo 0 (fromCol + 1) State.MovingRight
-            else yield moveTo 0 fromCol State.WaitingToFinish
+            for col in seq { 0;1;3;5;7;9;10 } do
+                if canMoveTo 0 col then yield moveTo 0 col State.WaitingToFinish
         }
     let tryToFinish () = 
         seq {
@@ -142,26 +124,27 @@ let enumerateMoves (fromRow: int) (fromCol: int) (amphipod: Amphipod) (grid: Opt
             let a1 = grid[1,amphipod.GoalColumn]
             let a2 = grid[2,amphipod.GoalColumn]
             if a1 = None && (a2 = None || a2.Value.Type = amphipod.Type) then // TODO: combiine with below 
-                if canMoveTo 2 amphipod.GoalColumn then yield moveTo 2 amphipod.GoalColumn State.Finished
-                elif canMoveTo 1 amphipod.GoalColumn then yield moveTo 1 amphipod.GoalColumn State.Finished
+                if canMoveTo 2 amphipod.GoalColumn then 
+                    yield moveTo 2 amphipod.GoalColumn State.Finished
+                elif canMoveTo 1 amphipod.GoalColumn then 
+                    yield moveTo 1 amphipod.GoalColumn State.Finished
         }
     match amphipod.State with
     | State.WaitingToLeave -> tryToLeave ()
-    | State.MovingLeft -> tryMoveLeft ()
-    | State.MovingRight -> tryMoveRight ()
     | State.WaitingToFinish -> tryToFinish ()
     | State.Finished -> Seq.empty //seq { (grid, totalCost) }
     | _ -> failwith "Invalid state"
 
 let isSolution (grid: Option<Amphipod>[,]) =
-    let isType i j atype = 
-        match grid[i,j] with
-        | None -> false
-        | Some(a) -> a.Type = atype
-    isType 1 2 Type.Amber  && isType 2 2 Type.Amber  &&
-    isType 1 4 Type.Bronze && isType 2 4 Type.Bronze &&
-    isType 1 6 Type.Copper && isType 2 6 Type.Copper &&
-    isType 1 8 Type.Desert && isType 2 8 Type.Desert
+    getAmphipods grid |> Array.forall (fun (a, _, col) -> a.GoalColumn = col)
+    // let isType i j atype = 
+    //     match grid[i,j] with
+    //     | None -> false
+    //     | Some(a) -> a.Type = atype
+    // isType 1 2 Type.Amber  && isType 2 2 Type.Amber  &&
+    // isType 1 4 Type.Bronze && isType 2 4 Type.Bronze &&
+    // isType 1 6 Type.Copper && isType 2 6 Type.Copper &&
+    // isType 1 8 Type.Desert && isType 2 8 Type.Desert
 
 let solve grid =
     let step (grid: Option<Amphipod>[,]) totalEnergy lowestCostFound =
@@ -180,7 +163,7 @@ let solve grid =
                         |> Seq.where (fun (_, cost) -> cost < lowestCostFound)
         } |> Seq.toList
 
-    let mutable lowestCostFound = 12522//System.Int32.MaxValue
+    let mutable lowestCostFound = System.Int32.MaxValue
     let mutable queue = step grid 0 lowestCostFound
     while not (queue |> List.isEmpty) do
         match queue with
@@ -204,24 +187,54 @@ let createSampleGrid =
     //   #A#D#C#A#
     //   #########
 
-    let state = State.WaitingToLeave
+    let initialState = State.WaitingToLeave
 
     let grid = Array2D.create 3 11 None
 
-    grid[1,2] <- Some(new Amphipod(Type.Bronze, state))
-    grid[2,2] <- Some(new Amphipod(Type.Amber, state))
+    grid[1,2] <- Some(new Amphipod(Type.Bronze, initialState))
+    grid[2,2] <- Some(new Amphipod(Type.Amber, State.Finished))
 
-    grid[1,4] <- Some(new Amphipod(Type.Copper, state))
-    grid[2,4] <- Some(new Amphipod(Type.Desert, state))
+    grid[1,4] <- Some(new Amphipod(Type.Copper, initialState))
+    grid[2,4] <- Some(new Amphipod(Type.Desert, initialState))
 
-    grid[1,6] <- Some(new Amphipod(Type.Bronze, state))
-    grid[2,6] <- Some(new Amphipod(Type.Copper, state))
+    grid[1,6] <- Some(new Amphipod(Type.Bronze, initialState))
+    grid[2,6] <- Some(new Amphipod(Type.Copper, State.Finished))
 
-    grid[1,8] <- Some(new Amphipod(Type.Desert, state))
-    grid[2,8] <- Some(new Amphipod(Type.Amber, state))
+    grid[1,8] <- Some(new Amphipod(Type.Desert, initialState))
+    grid[2,8] <- Some(new Amphipod(Type.Amber, initialState))
+
+    grid
+
+let createPuzzleGrid =
+    // #############
+    // #...........#
+    // ###D#D#A#A###
+    //   #C#C#B#B#
+    //   #########
+
+    let initialState = State.WaitingToLeave
+
+    let grid = Array2D.create 3 11 None
+
+    grid[1,2] <- Some(new Amphipod(Type.Desert, initialState))
+    grid[2,2] <- Some(new Amphipod(Type.Copper, initialState))
+
+    grid[1,4] <- Some(new Amphipod(Type.Desert, initialState))
+    grid[2,4] <- Some(new Amphipod(Type.Copper, initialState))
+
+    grid[1,6] <- Some(new Amphipod(Type.Amber, initialState))
+    grid[2,6] <- Some(new Amphipod(Type.Bronze, initialState))
+
+    grid[1,8] <- Some(new Amphipod(Type.Amber, initialState))
+    grid[2,8] <- Some(new Amphipod(Type.Bronze, initialState))
 
     grid
 
 
-let sampleCost = solve createSampleGrid
-printfn "%i" sampleCost
+// Sample data
+// let sampleCost = solve createSampleGrid
+// printfn "%i" sampleCost // 12521
+
+// Puzzle data
+let cost = solve createPuzzleGrid
+printfn "%i" cost // ??
