@@ -180,7 +180,7 @@ let solve grid =
         | [] -> ()
     lowestCostFound
 
-let createSampleGrid =
+let createSampleGrid unfolded =
     // #############
     // #...........#
     // ###B#C#B#D###
@@ -189,23 +189,48 @@ let createSampleGrid =
 
     let initialState = State.WaitingToLeave
 
-    let grid = Array2D.create 3 11 None
+    if unfolded then // part 2
+        let grid = Array2D.create 5 11 None
 
-    grid[1,2] <- Some(new Amphipod(Type.Bronze, initialState))
-    grid[2,2] <- Some(new Amphipod(Type.Amber, State.Finished))
+        grid[1,2] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[2,2] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[3,2] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[4,2] <- Some(new Amphipod(Type.Amber, State.Finished))
 
-    grid[1,4] <- Some(new Amphipod(Type.Copper, initialState))
-    grid[2,4] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[1,4] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[2,4] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[3,4] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[4,4] <- Some(new Amphipod(Type.Desert, initialState))
 
-    grid[1,6] <- Some(new Amphipod(Type.Bronze, initialState))
-    grid[2,6] <- Some(new Amphipod(Type.Copper, State.Finished))
+        grid[1,6] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[2,6] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[3,6] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[4,6] <- Some(new Amphipod(Type.Copper, State.Finished))
 
-    grid[1,8] <- Some(new Amphipod(Type.Desert, initialState))
-    grid[2,8] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[1,8] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[2,8] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[3,8] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[4,8] <- Some(new Amphipod(Type.Amber, initialState))
 
-    grid
+        grid
+    else // part 1
+        let grid = Array2D.create 3 11 None
 
-let createPuzzleGrid =
+        grid[1,2] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[2,2] <- Some(new Amphipod(Type.Amber, State.Finished))
+
+        grid[1,4] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[2,4] <- Some(new Amphipod(Type.Desert, initialState))
+
+        grid[1,6] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[2,6] <- Some(new Amphipod(Type.Copper, State.Finished))
+
+        grid[1,8] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[2,8] <- Some(new Amphipod(Type.Amber, initialState))
+
+        grid
+
+let createPuzzleGrid unfolded =
     // #############
     // #...........#
     // ###D#D#A#A###
@@ -214,27 +239,64 @@ let createPuzzleGrid =
 
     let initialState = State.WaitingToLeave
 
-    let grid = Array2D.create 3 11 None
+    if unfolded then // part 2
+        let grid = Array2D.create 5 11 None
 
-    grid[1,2] <- Some(new Amphipod(Type.Desert, initialState))
-    grid[2,2] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[1,2] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[2,2] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[3,2] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[4,2] <- Some(new Amphipod(Type.Copper, initialState))
 
-    grid[1,4] <- Some(new Amphipod(Type.Desert, initialState))
-    grid[2,4] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[1,4] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[2,4] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[3,4] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[4,4] <- Some(new Amphipod(Type.Copper, initialState))
 
-    grid[1,6] <- Some(new Amphipod(Type.Amber, initialState))
-    grid[2,6] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[1,6] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[2,6] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[3,6] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[4,6] <- Some(new Amphipod(Type.Bronze, initialState))
 
-    grid[1,8] <- Some(new Amphipod(Type.Amber, initialState))
-    grid[2,8] <- Some(new Amphipod(Type.Bronze, initialState))
+        grid[1,8] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[2,8] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[3,8] <- Some(new Amphipod(Type.Copper, initialState))
+        grid[4,8] <- Some(new Amphipod(Type.Bronze, initialState))
 
-    grid
+        grid
+    else
+        let grid = Array2D.create 3 11 None
 
+        grid[1,2] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[2,2] <- Some(new Amphipod(Type.Copper, initialState))
+
+        grid[1,4] <- Some(new Amphipod(Type.Desert, initialState))
+        grid[2,4] <- Some(new Amphipod(Type.Copper, initialState))
+
+        grid[1,6] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[2,6] <- Some(new Amphipod(Type.Bronze, initialState))
+
+        grid[1,8] <- Some(new Amphipod(Type.Amber, initialState))
+        grid[2,8] <- Some(new Amphipod(Type.Bronze, initialState))
+
+        grid
+
+// --- Part One ---
 
 // Sample data
-// let sampleCost = solve createSampleGrid
+// let sampleCost = solve (createSampleGrid false)
 // printfn "%i" sampleCost // 12521
 
 // Puzzle data
-let cost = solve createPuzzleGrid
-printfn "%i" cost // ??
+// let cost = solve (createPuzzleGrid false)
+// printfn "%i" cost // 16489
+
+// --- Part Two ---
+
+// Sample data
+let sampleCost' = solve (createSampleGrid true)
+printfn "%i" sampleCost' // 44169
+
+// Puzzle data
+let cost' = solve (createPuzzleGrid true)
+printfn "%i" cost' // ???
+
